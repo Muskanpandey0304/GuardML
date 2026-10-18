@@ -1,0 +1,14 @@
+.env
+.git
+.venv
+myenv
+venv
+__pycache__
+*.pyc
+*.egg-info
+.pytest_cache
+*.db
+mlruns
+reports/*.md
+.vscode
+.idea

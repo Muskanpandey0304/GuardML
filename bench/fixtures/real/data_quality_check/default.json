@@ -1,0 +1,90 @@
+{
+ "tool": "data_quality_check",
+ "case": "default",
+ "source": "recorded",
+ "real_output": {
+  "ok": true,
+  "data_path": "demo/data/current.csv",
+  "total_rows": 1000,
+  "columns_checked": 6,
+  "failed_checks": [
+   "distance_from_home: null_fraction=11.50% > threshold=5.00%"
+  ],
+  "passed_columns": [
+   "amount",
+   "n_transactions_day",
+   "account_age_days",
+   "hour_of_day",
+   "credit_score"
+  ],
+  "details": [
+   {
+    "column": "amount",
+    "checks": [],
+    "null_fraction": 0.0,
+    "null_check_passed": true,
+    "stats": {
+     "min": 0.0286618383244749,
+     "max": 2390.261781207275,
+     "mean": 349.4070917448065
+    }
+   },
+   {
+    "column": "n_transactions_day",
+    "checks": [],
+    "null_fraction": 0.0,
+    "null_check_passed": true,
+    "stats": {
+     "min": 0.0,
+     "max": 15.0,
+     "mean": 6.958
+    }
+   },
+   {
+    "column": "account_age_days",
+    "checks": [],
+    "null_fraction": 0.0,
+    "null_check_passed": true,
+    "stats": {
+     "min": 2.0,
+     "max": 3649.0,
+     "mean": 1771.376
+    }
+   },
+   {
+    "column": "hour_of_day",
+    "checks": [],
+    "null_fraction": 0.0,
+    "null_check_passed": true,
+    "stats": {
+     "min": 0.0,
+     "max": 23.0,
+     "mean": 11.275
+    }
+   },
+   {
+    "column": "distance_from_home",
+    "checks": [],
+    "null_fraction": 0.115,
+    "null_check_passed": false,
+    "stats": {
+     "min": 0.0188314529118918,
+     "max": 142.59725018802288,
+     "mean": 18.6962578128448
+    }
+   },
+   {
+    "column": "credit_score",
+    "checks": [],
+    "null_fraction": 0.0,
+    "null_check_passed": true,
+    "stats": {
+     "min": 300.0,
+     "max": 850.0,
+     "mean": 555.2584767301722
+    }
+   }
+  ]
+ },
+ "recorded_at": "2026-10-15T07:41Z"
+}

@@ -1,0 +1,132 @@
+# GuardML ToolGuard Policy v2
+# Deny by default — anything not explicitly allowed is blocked.
+# Validated against strict schema on startup. Unknown keys are REJECTED.
+# A bad policy file prevents startup (fail closed).
+version: 1
+default_decision: BLOCK
+
+tool_classes:
+  read:       { base_risk: 5 }
+  write_low:  { base_risk: 25 }
+  write_high: { base_risk: 45 }
+
+environments:
+  staging:
+    allow:      [read, write_low]
+    approval:   [write_high]
+    risk_bonus: 0
+  production:
+    allow:      [read]
+    approval:   [write_low, write_high]
+    risk_bonus: 20
+
+# Always blocked — never runs regardless of environment or approval
+blocked_tools:
+  - mlflow_delete_model
+  - mlflow_delete_run
+  - mlflow_delete_experiment
+  - delete_model
+  - delete_dataset
+  - delete_experiment
+  - dvc_remove
+  - docker_rm
+  - docker_exec
+  - kubectl_delete
+  - kubectl_exec
+  - kubectl_apply
+  - drop_table
+  - truncate_table
+
+# Resources whose targeting raises the risk score
+protected_resources:
+  model_aliases: [production, champion]
+  containers:    [model-api, guardml-api]
+
+# Blocked patterns — applied to all string args after normalization
+# Normalization: Unicode NFKC, lowercase, collapse whitespace, URL-decode once
+blocked_patterns:
+  - 'rm\s+-rf'
+  - 'drop\s+table'
+  - 'truncate\s+table'
+  - '--force'
+  - '\bsudo\b'
+  - 'curl[^|]*\|\s*(ba)?sh'
+  - '/etc/(passwd|shadow)'
+  - 'ignore previous instructions'
+  - ';\s*rm'
+  - '&&\s*rm'
+  - '\$\('
+  - '`'
+  - '\bwhoami\b'
+  - '\bcat\b'
+  - 'exec\s*\('
+  - '__import__'
+  - 'eval\s*\('
+  - 'os\.system'
+  - 'subprocess\.call'
+
+
+limits:
+  max_calls_per_session:   20
+  max_blocked_per_session: 3
+  max_output_chars:        8000
+  approval_ttl_seconds:    600
+  require_reason_for:      medium
+  tool_timeout_seconds:    15
+
+# Allowed hosts for health_check (SSRF defense).
+# guardml-api is intentionally NOT listed: health_check must not be able to
+# reach the control-plane API. Only /health and /ready paths are ever allowed
+# (enforced in tools/deploy_tools.py), with no query strings or redirects.
+allowed_health_hosts:
+  - localhost
+  - 127.0.0.1
+  - model-api
+
+# Allowed base paths for file arguments (path confinement)
+allowed_file_roots:
+  - ./demo/data
+  - ./reports
+
+# Containers whose logs docker_logs may read. The control plane (guardml-api) is deliberately absent: its logs
+# hold request ids and session data. Container IDs are not accepted; use names.
+allowed_log_containers:
+  - model-api
+  - mlflow
+
+# Kubernetes namespaces the kubectl tools may read. Anything else (kube-system, ...) is rejected.
+allowed_k8s_namespaces:
+  - default
+
+# Directories a tool may run a VCS command in (dvc repo_path). Subdirectories are
+# allowed; anything outside (absolute paths, '..') is rejected.
+allowed_repo_roots:
+  - .
+
+# Post-write verification (after mlflow_set_alias): GET this health URL.
+#   healthy     -> keep the change
+#   unhealthy   -> auto-rollback (the service answered and is broken)
+#   unreachable -> per environment: 'rollback' (fail closed) or 'warn' (keep the
+#                  change, mark it UNVERIFIED in the audit log and the UI).
+# Environments not listed default to 'rollback'.
+# GUARDML_VERIFY_URL overrides the url (docker-compose points it at model-api).
+verify_after_write:
+  url: http://localhost:8001/health
+  on_unreachable:
+    staging: warn
+    production: rollback
+
+# Argument provenance: a state-changing call whose argument VALUE appears only in
+# tool output (logs, run tags, CSV headers...) and never in the user's request is
+# escalated to human approval, with the source tool named. (+20 risk)
+provenance:
+  enabled: true
+  classes: [write_low, write_high]
+
+# Intent check: an isolated judge model sees ONLY the user's request and the
+# proposed action (never tool output) and says whether the user asked for it.
+# Misaligned or judge failure => human approval (fail closed). Active only when a
+# judge is attached (the agent loop attaches one whenever an LLM is configured).
+intent_check:
+  enabled: true
+  classes: [write_low, write_high]

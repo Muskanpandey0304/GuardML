@@ -1,0 +1,22 @@
+{
+ "tool": "disk_memory_status",
+ "case": "default",
+ "source": "recorded",
+ "real_output": {
+  "ok": true,
+  "disk": {
+   "path": "./demo",
+   "total_gb": 215.82,
+   "used_gb": 126.88,
+   "free_gb": 88.94,
+   "used_pct": 58.8
+  },
+  "memory": {
+   "total_gb": 17.02,
+   "used_gb": 11.18,
+   "available_gb": 5.84,
+   "used_pct": 65.7
+  }
+ },
+ "recorded_at": "2026-10-15T07:41Z"
+}

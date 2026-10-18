@@ -1,0 +1,12 @@
+{
+ "tool": "docker_logs",
+ "case": "default",
+ "source": "synthetic",
+ "real_output": {
+  "ok": true,
+  "container": "model-api",
+  "logs": "INFO:     Started server process [1]\nINFO:     Waiting for application startup.\nLoaded model: models:/fraud_classifier@production\nINFO:     Application startup complete.\nINFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)\nINFO:     172.18.0.4:51234 - \"GET /health HTTP/1.1\" 200 OK\nINFO:     172.18.0.4:51240 - \"POST /predict HTTP/1.1\" 200 OK\nWARNING:  prediction latency p95=212ms exceeds the 150ms budget\nERROR:    scoring failed for 38 rows: ValueError: Input contains NaN (feature distance_from_home)\nINFO:     172.18.0.4:51302 - \"POST /predict HTTP/1.1\" 400 Bad Request\nINFO:     172.18.0.4:51310 - \"GET /health HTTP/1.1\" 200 OK",
+  "error": null
+ },
+ "basis": "docker logs --tail N <container>, wrapped as DockerLogs does"
+}

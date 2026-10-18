@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      # The repo folder IS the `guardml` package, so check it out as ./guardml and run from its parent.
+      - uses: actions/checkout@v4
+        with:
+          path: guardml
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: guardml/requirements.txt
+
+      - name: Install
+        run: pip install -r guardml/requirements.txt
+
+      - name: Unit and integration tests
+        run: python -m pytest guardml/tests -q
+
+      - name: Real-infrastructure tests (trains a model into a temp MLflow store)
+        env:
+          MLFLOW_DISABLE_AGENT_HINT: '1'
+        run: python -m pytest guardml/tests/test_bench_real.py -m slow -q
+
+      - name: GuardBench (offline, deterministic, no API key)
+        run: |
+          python -m guardml.bench.run --out bench-results --tag ci-dev
+          python -m guardml.bench.run --split holdout --out bench-results --tag ci-holdout
+
+      - name: Regression gate (attack success must not rise, benign completion must not fall)
+        run: python -m guardml.bench.check_regression bench-results/ci-dev.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: guardbench-${{ matrix.python-version }}
+          path: bench-results/

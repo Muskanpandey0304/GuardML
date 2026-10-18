@@ -1,0 +1,11 @@
+{
+ "tool": "docker_restart",
+ "case": "default",
+ "source": "synthetic",
+ "real_output": {
+  "ok": true,
+  "container": "model-api",
+  "message": "Restart initiated"
+ },
+ "basis": "tools/deploy_tools.py DockerRestart success output (no docker daemon was available)"
+}

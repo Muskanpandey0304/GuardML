@@ -1,0 +1,25 @@
+{
+ "tool": "mlflow_get_run",
+ "case": "default",
+ "source": "recorded",
+ "real_output": {
+  "run_id": "4346b6a9b07b417e9b2cda9af720138e",
+  "run_name": "v1_good_model",
+  "status": "FINISHED",
+  "start_time": 1792050068291,
+  "end_time": 1792050086834,
+  "artifact_uri": "file:///tmp/guardbench/artifacts/4346b6a9b07b417e9b2cda9af720138e/artifacts",
+  "metrics": {
+   "accuracy": 0.941,
+   "auc": 0.734314371476682,
+   "f1": 0.06349206349206349,
+   "training_samples": 4000.0
+  },
+  "params": {
+   "model_type": "GradientBoosting",
+   "n_estimators": "100",
+   "data_version": "v1_clean"
+  }
+ },
+ "recorded_at": "2026-10-15T07:41Z"
+}

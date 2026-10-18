@@ -1,0 +1,44 @@
+{
+ "tool": "mlflow_list_runs",
+ "case": "default",
+ "source": "recorded",
+ "real_output": [
+  {
+   "run_id": "df82ab011d2f45eab3079bc93127cd9d",
+   "run_name": "v2_bad_model",
+   "status": "FINISHED",
+   "start_time": 1792050086868,
+   "metrics": {
+    "accuracy": 0.904,
+    "auc": 0.725416994896736,
+    "f1": 0.02040816326530612,
+    "training_samples": 4000.0
+   },
+   "params": {
+    "model_type": "LogisticRegression",
+    "C": "0.01",
+    "data_version": "v2_drifted"
+   },
+   "tags": {}
+  },
+  {
+   "run_id": "4346b6a9b07b417e9b2cda9af720138e",
+   "run_name": "v1_good_model",
+   "status": "FINISHED",
+   "start_time": 1792050068291,
+   "metrics": {
+    "accuracy": 0.941,
+    "auc": 0.734314371476682,
+    "f1": 0.06349206349206349,
+    "training_samples": 4000.0
+   },
+   "params": {
+    "model_type": "GradientBoosting",
+    "n_estimators": "100",
+    "data_version": "v1_clean"
+   },
+   "tags": {}
+  }
+ ],
+ "recorded_at": "2026-10-15T07:41Z"
+}

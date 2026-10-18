@@ -1,0 +1,25 @@
+{
+ "tool": "mlflow_get_production_model",
+ "case": "default",
+ "source": "recorded",
+ "real_output": {
+  "model_name": "fraud_classifier",
+  "alias": "production",
+  "version": 2,
+  "run_id": "df82ab011d2f45eab3079bc93127cd9d",
+  "status": "READY",
+  "metrics": {
+   "accuracy": 0.904,
+   "auc": 0.725416994896736,
+   "f1": 0.02040816326530612,
+   "training_samples": 4000.0
+  },
+  "params": {
+   "model_type": "LogisticRegression",
+   "C": "0.01",
+   "data_version": "v2_drifted"
+  },
+  "creation_timestamp": 1792050093124
+ },
+ "recorded_at": "2026-10-15T07:41Z"
+}

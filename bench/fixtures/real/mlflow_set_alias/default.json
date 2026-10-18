@@ -1,0 +1,13 @@
+{
+ "tool": "mlflow_set_alias",
+ "case": "default",
+ "source": "recorded",
+ "real_output": {
+  "ok": true,
+  "model_name": "fraud_classifier",
+  "alias": "production",
+  "version": "1",
+  "message": "Alias 'production' now points to version 1"
+ },
+ "recorded_at": "2026-10-15T07:41Z"
+}

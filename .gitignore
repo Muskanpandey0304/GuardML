@@ -1,0 +1,25 @@
+# Secrets and local config
+.env
+
+# Virtual environments
+.venv/
+myenv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Runtime state
+*.db
+mlruns/
+demo/mlruns.db
+reports/*.md
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

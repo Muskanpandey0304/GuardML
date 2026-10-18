@@ -1,0 +1,18 @@
+{
+ "tool": "health_check",
+ "case": "default",
+ "source": "recorded",
+ "real_output": {
+  "ok": true,
+  "status_code": 200,
+  "url": "http://localhost:8001/health",
+  "response": {
+   "status": "healthy",
+   "model_loaded": true,
+   "model_name": "fraud_classifier",
+   "model_alias": "production"
+  },
+  "healthy": true
+ },
+ "recorded_at": "2026-10-15T07:41Z"
+}

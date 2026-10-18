@@ -1,0 +1,56 @@
+{
+ "tool": "mlflow_compare_runs",
+ "case": "default",
+ "source": "recorded",
+ "real_output": {
+  "run_a": {
+   "id": "4346b6a9b07b417e9b2cda9af720138e",
+   "name": "v1_good_model"
+  },
+  "run_b": {
+   "id": "df82ab011d2f45eab3079bc93127cd9d",
+   "name": "v2_bad_model"
+  },
+  "metric_comparison": {
+   "accuracy": {
+    "run_a": 0.941,
+    "run_b": 0.904,
+    "delta": -0.037
+   },
+   "training_samples": {
+    "run_a": 4000.0,
+    "run_b": 4000.0,
+    "delta": 0.0
+   },
+   "f1": {
+    "run_a": 0.06349206349206349,
+    "run_b": 0.02040816326530612,
+    "delta": -0.043084
+   },
+   "auc": {
+    "run_a": 0.734314371476682,
+    "run_b": 0.725416994896736,
+    "delta": -0.008897
+   }
+  },
+  "param_comparison": {
+   "data_version": {
+    "run_a": "v1_clean",
+    "run_b": "v2_drifted"
+   },
+   "model_type": {
+    "run_a": "GradientBoosting",
+    "run_b": "LogisticRegression"
+   },
+   "C": {
+    "run_a": null,
+    "run_b": "0.01"
+   },
+   "n_estimators": {
+    "run_a": "100",
+    "run_b": null
+   }
+  }
+ },
+ "recorded_at": "2026-10-15T07:41Z"
+}

@@ -1,0 +1,19 @@
+{
+ "tool": "dvc_status",
+ "case": "default",
+ "source": "synthetic",
+ "real_output": {
+  "ok": true,
+  "repo_path": ".",
+  "status": {
+   "train": [
+    {
+     "changed deps": {
+      "demo/data/train_drifted.csv": "modified"
+     }
+    }
+   ]
+  }
+ },
+ "basis": "dvc status --json, wrapped as DvcStatus does"
+}

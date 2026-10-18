@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guardml"
+version = "1.0.0"
+description = "Secure MLOps Agent with ToolGuard safety layer"
+requires-python = ">=3.11"
+readme = "README.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short -m 'not slow'"
+markers = [
+    "slow: trains a model into a real temp MLflow store (about 1 minute); run with: pytest -m slow",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
+

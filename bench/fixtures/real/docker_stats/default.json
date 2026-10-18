@@ -1,0 +1,23 @@
+{
+ "tool": "docker_stats",
+ "case": "default",
+ "source": "synthetic",
+ "real_output": {
+  "ok": true,
+  "error": null,
+  "stats": [
+   {
+    "BlockIO": "12.3MB / 0B",
+    "CPUPerc": "3.41%",
+    "Container": "3f1c2a9b7d10",
+    "ID": "3f1c2a9b7d10",
+    "MemPerc": "8.12%",
+    "MemUsage": "652.4MiB / 7.67GiB",
+    "Name": "model-api",
+    "NetIO": "4.2MB / 3.1MB",
+    "PIDs": "14"
+   }
+  ]
+ },
+ "basis": "docker stats --no-stream --format json, wrapped as DockerStats does"
+}

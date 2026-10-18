@@ -1,0 +1,57 @@
+{
+ "tool": "drift_report",
+ "case": "default",
+ "source": "recorded",
+ "real_output": {
+  "ok": true,
+  "dataset_drift_detected": true,
+  "share_of_drifted_columns": 0.6667,
+  "drifted_features": [
+   "amount",
+   "n_transactions_day",
+   "account_age_days",
+   "credit_score"
+  ],
+  "feature_details": {
+   "amount": {
+    "drifted": true,
+    "score": 0.0,
+    "method": "Kolmogorov-Smirnov",
+    "threshold": 0.05
+   },
+   "n_transactions_day": {
+    "drifted": true,
+    "score": 0.0,
+    "method": "Kolmogorov-Smirnov",
+    "threshold": 0.05
+   },
+   "account_age_days": {
+    "drifted": true,
+    "score": 0.0136,
+    "method": "Kolmogorov-Smirnov",
+    "threshold": 0.05
+   },
+   "hour_of_day": {
+    "drifted": false,
+    "score": 0.4443,
+    "method": "Kolmogorov-Smirnov",
+    "threshold": 0.05
+   },
+   "distance_from_home": {
+    "drifted": false,
+    "score": 0.217,
+    "method": "Kolmogorov-Smirnov",
+    "threshold": 0.05
+   },
+   "credit_score": {
+    "drifted": true,
+    "score": 0.0,
+    "method": "Kolmogorov-Smirnov",
+    "threshold": 0.05
+   }
+  },
+  "reference_rows": 5000,
+  "current_rows": 1000
+ },
+ "recorded_at": "2026-10-15T07:41Z"
+}

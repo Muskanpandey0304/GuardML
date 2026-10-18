@@ -1,0 +1,24 @@
+{
+ "tool": "dvc_diff",
+ "case": "default",
+ "source": "synthetic",
+ "real_output": {
+  "ok": true,
+  "diff": {
+   "added": [],
+   "deleted": [],
+   "renamed": [],
+   "modified": [
+    {
+     "path": "demo/data/current.csv",
+     "hash": {
+      "old": "5d41402abc4b2a76b9719d911017c592",
+      "new": "7d793037a0760186574b0282f2f435e7"
+     }
+    }
+   ],
+   "not in cache": []
+  }
+ },
+ "basis": "dvc diff --json, wrapped as DvcDiff does"
+}

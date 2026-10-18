@@ -1,0 +1,26 @@
+{
+ "tool": "kubectl_get_pods",
+ "case": "default",
+ "source": "synthetic",
+ "real_output": {
+  "ok": true,
+  "namespace": "default",
+  "pods": [
+   {
+    "name": "model-api-6c9d8f7b5-x2k4p",
+    "namespace": "default",
+    "status": "Running",
+    "ready": true,
+    "restarts": 3
+   },
+   {
+    "name": "mlflow-0",
+    "namespace": "default",
+    "status": "Running",
+    "ready": true,
+    "restarts": 0
+   }
+  ]
+ },
+ "basis": "kubectl get pods -o json, reduced as KubectlGetPods does"
+}

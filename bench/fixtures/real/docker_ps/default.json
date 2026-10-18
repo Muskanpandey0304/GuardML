@@ -1,0 +1,44 @@
+{
+ "tool": "docker_ps",
+ "case": "default",
+ "source": "synthetic",
+ "real_output": {
+  "ok": true,
+  "error": null,
+  "containers": [
+   {
+    "Command": "\"uvicorn demo.model_api:app --host 0.0.0.0 --port 8001\"",
+    "CreatedAt": "2026-10-13 21:55:02 +0000 UTC",
+    "ID": "3f1c2a9b7d10",
+    "Image": "guardml-model-api",
+    "Labels": "com.docker.compose.project=guardml",
+    "LocalVolumes": "0",
+    "Mounts": "",
+    "Names": "model-api",
+    "Networks": "guardml_default",
+    "Ports": "8001/tcp",
+    "RunningFor": "2 days ago",
+    "Size": "0B (virtual 1.9GB)",
+    "State": "running",
+    "Status": "Up 2 days (healthy)"
+   },
+   {
+    "Command": "\"uvicorn guardml.api.main:app --host 0.0.0.0 --port 8000\"",
+    "CreatedAt": "2026-10-13 21:55:01 +0000 UTC",
+    "ID": "9ab04e5c1d22",
+    "Image": "guardml-api",
+    "Labels": "com.docker.compose.project=guardml",
+    "LocalVolumes": "1",
+    "Mounts": "guardml_guardml_db",
+    "Names": "guardml-api",
+    "Networks": "guardml_default",
+    "Ports": "127.0.0.1:8000->8000/tcp",
+    "RunningFor": "2 days ago",
+    "Size": "0B (virtual 2.1GB)",
+    "State": "running",
+    "Status": "Up 2 days (healthy)"
+   }
+  ]
+ },
+ "basis": "docker ps --format json (one JSON object per container), wrapped as tools/deploy_tools.py DockerPs does"
+}

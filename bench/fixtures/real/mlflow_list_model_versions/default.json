@@ -1,0 +1,26 @@
+{
+ "tool": "mlflow_list_model_versions",
+ "case": "default",
+ "source": "recorded",
+ "real_output": [
+  {
+   "version": 1,
+   "run_id": "4346b6a9b07b417e9b2cda9af720138e",
+   "status": "READY",
+   "creation_timestamp": 1792050086805,
+   "last_updated_timestamp": 1792050086805,
+   "aliases": [],
+   "tags": {}
+  },
+  {
+   "version": 2,
+   "run_id": "df82ab011d2f45eab3079bc93127cd9d",
+   "status": "READY",
+   "creation_timestamp": 1792050093124,
+   "last_updated_timestamp": 1792050093124,
+   "aliases": [],
+   "tags": {}
+  }
+ ],
+ "recorded_at": "2026-10-15T07:41Z"
+}
