@@ -103,6 +103,12 @@ def validate_path(value: str, field: str, allowed_roots: List[str]) -> str:
             raise ValidationError(
                 f"{field}: absolute path to sensitive location is blocked"
             )
+    # On POSIX, 'C:/x' would resolve as a relative path inside the repo, so reject Windows drive/UNC forms.
+    # (On Windows, realpath handles them correctly and they are legitimate.)
+    if os.name != "nt" and re.match(r"^([A-Za-z]:|\\\\|//)", value):
+        raise ValidationError(
+            f"{field}: Windows drive or UNC paths are not allowed"
+        )
     # Reject .. traversal
     parts = Path(value).parts
     if ".." in parts:
