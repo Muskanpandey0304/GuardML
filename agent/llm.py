@@ -17,6 +17,7 @@ Gemini thought signatures); other providers ignore it.
 from __future__ import annotations
 
 import copy
+import json
 import logging
 import os
 import time
@@ -270,6 +271,96 @@ class GeminiProvider(LLMProvider):
 
 
 # ---------------------------------------------------------------------------
+# Ollama (local models, REST)
+# ---------------------------------------------------------------------------
+DEFAULT_OLLAMA_MODEL = 'llama3.1:8b'
+DEFAULT_OLLAMA_HOST = 'http://localhost:11434'
+
+
+class OllamaProvider(LLMProvider):
+    """Local model served by Ollama (/api/chat). No API key; the model must already be pulled."""
+    name = 'ollama'
+
+    def __init__(self, model: Optional[str] = None, host: Optional[str] = None, session: Any = None):
+        self.model = model or os.getenv('OLLAMA_MODEL') or DEFAULT_OLLAMA_MODEL
+        self.host = (host or os.getenv('OLLAMA_HOST') or DEFAULT_OLLAMA_HOST).rstrip('/')
+        if not self.host.startswith('http'):
+            self.host = 'http://' + self.host
+        if session is None:
+            import requests
+            session = requests
+        self.http = session
+        self.num_ctx = int(os.getenv('OLLAMA_NUM_CTX', '8192'))
+        self.timeout = float(os.getenv('OLLAMA_TIMEOUT', '600'))  # CPU/partial-GPU inference is slow
+
+    @staticmethod
+    def to_native(system: str, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = [{'role': 'system', 'content': system}]
+        for m in messages:
+            role = m['role']
+            if role == 'user':
+                out.append({'role': 'user', 'content': m['content']})
+            elif role == 'assistant':
+                msg: Dict[str, Any] = {'role': 'assistant', 'content': m.get('text') or ''}
+                if m.get('tool_calls'):
+                    msg['tool_calls'] = [
+                        {'function': {'name': tc.name, 'arguments': tc.input}} for tc in m['tool_calls']
+                    ]
+                out.append(msg)
+            elif role == 'tool':
+                for r in m['results']:
+                    out.append({'role': 'tool', 'tool_name': r['name'], 'content': r['content']})
+        return out
+
+    @staticmethod
+    def parse(data: Dict[str, Any]) -> Optional[LLMResponse]:
+        msg = data.get('message')
+        if not msg:
+            return None
+        calls: List[ToolUse] = []
+        for tc in msg.get('tool_calls') or []:
+            fn = tc.get('function') or {}
+            args = fn.get('arguments') or {}
+            if isinstance(args, str):  # some models return the arguments as a JSON string
+                try:
+                    args = json.loads(args)
+                except ValueError:
+                    args = {}
+            calls.append(ToolUse(id=str(uuid.uuid4()), name=fn.get('name', ''), input=dict(args)))
+        return LLMResponse(text=(msg.get('content') or '').strip(), tool_calls=calls, raw=msg)
+
+    def generate(self, system, messages, tools):
+        payload: Dict[str, Any] = {
+            'model': self.model,
+            'messages': self.to_native(system, messages),
+            'stream': False,
+            'options': {'temperature': 0, 'num_ctx': self.num_ctx},
+        }
+        if tools:
+            payload['tools'] = [
+                {'type': 'function', 'function': {
+                    'name': t['name'],
+                    'description': t.get('description', ''),
+                    'parameters': t.get('input_schema', {'type': 'object', 'properties': {}}),
+                }}
+                for t in tools
+            ]
+        for attempt in range(MAX_RETRIES):
+            try:
+                resp = self.http.post(f'{self.host}/api/chat', json=payload, timeout=self.timeout)
+                if resp.status_code == 200:
+                    parsed = self.parse(resp.json())
+                    if parsed is not None:
+                        return parsed
+                else:
+                    logger.warning('Ollama API error %d on %s: %s', resp.status_code, self.model, resp.text[:200])
+            except Exception as e:
+                logger.warning('Ollama call exception on %s: %s', self.model, type(e).__name__)
+            time.sleep(RETRY_BACKOFF_BASE ** attempt)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Scripted provider: deterministic "LLM" for tests, offline benchmark and CI
 # ---------------------------------------------------------------------------
 class ScriptedProvider(LLMProvider):
@@ -320,9 +411,10 @@ def select_provider() -> Optional[LLMProvider]:
     """
     Pick a provider from the environment. Returns None => deterministic demo mode.
 
-    GUARDML_LLM_PROVIDER = anthropic | gemini | demo   (optional override)
+    GUARDML_LLM_PROVIDER = anthropic | gemini | ollama | demo   (optional override)
     Otherwise: Gemini if GEMINI_API_KEY/GOOGLE_API_KEY is set, else Anthropic if
-    ANTHROPIC_API_KEY is set, else demo mode.
+    ANTHROPIC_API_KEY is set, else demo mode. Ollama is only used when asked for explicitly
+    (model via OLLAMA_MODEL, default llama3.1:8b).
     """
     choice = os.getenv('GUARDML_LLM_PROVIDER', '').strip().lower()
     gemini_key = _real_key(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY'))
@@ -330,6 +422,8 @@ def select_provider() -> Optional[LLMProvider]:
 
     if choice == 'demo':
         return None
+    if choice == 'ollama':
+        return OllamaProvider()
     if choice == 'anthropic':
         return AnthropicProvider(anthropic_key) if anthropic_key else None
     if choice == 'gemini':
