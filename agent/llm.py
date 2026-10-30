@@ -273,7 +273,7 @@ class GeminiProvider(LLMProvider):
 # ---------------------------------------------------------------------------
 # Ollama (local models, REST)
 # ---------------------------------------------------------------------------
-DEFAULT_OLLAMA_MODEL = 'llama3.1:8b'
+DEFAULT_OLLAMA_MODEL = 'qwen2.5:7b'
 DEFAULT_OLLAMA_HOST = 'http://localhost:11434'
 
 
@@ -414,7 +414,7 @@ def select_provider() -> Optional[LLMProvider]:
     GUARDML_LLM_PROVIDER = anthropic | gemini | ollama | demo   (optional override)
     Otherwise: Gemini if GEMINI_API_KEY/GOOGLE_API_KEY is set, else Anthropic if
     ANTHROPIC_API_KEY is set, else demo mode. Ollama is only used when asked for explicitly
-    (model via OLLAMA_MODEL, default llama3.1:8b).
+    (model via OLLAMA_MODEL, default qwen2.5:7b).
     """
     choice = os.getenv('GUARDML_LLM_PROVIDER', '').strip().lower()
     gemini_key = _real_key(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY'))
