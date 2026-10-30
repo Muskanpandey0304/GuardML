@@ -1,7 +1,6 @@
 # GuardML dependencies
 # Core
 anthropic>=0.35.0
-google-genai>=0.3.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.30.0
 streamlit>=1.35.0

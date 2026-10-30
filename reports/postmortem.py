@@ -11,8 +11,6 @@ import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from google import genai
-from google.genai import types as genai_types
 from dotenv import load_dotenv
 # Load .env relative to this file so it works from any working directory
 load_dotenv(Path(__file__).parent.parent / '.env')
@@ -20,11 +18,14 @@ load_dotenv()  # also try cwd
 
 try:
     from guardml.audit.log import AuditLog
+    from guardml.agent.llm import select_provider
 except ImportError:
     try:
         from audit.log import AuditLog
+        from agent.llm import select_provider
     except ImportError:
         from ..audit.log import AuditLog
+        from ..agent.llm import select_provider
 
 
 REPORTS_DIR = Path(os.getenv('GUARDML_REPORTS_DIR', './reports'))
@@ -69,11 +70,11 @@ IMPORTANT: Do not include ANY information not present in the Audit Log or Diagno
 class PostMortemGenerator:
     def __init__(self):
         self.audit = AuditLog()
-        api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY') or ''
-        if not api_key:
-            raise ValueError('GEMINI_API_KEY not set in environment or .env file')
-        self.client = genai.Client(api_key=api_key)
-        self.model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
+        # Same provider the agent uses (Ollama, Gemini or Anthropic, chosen via GUARDML_LLM_PROVIDER).
+        self.provider = select_provider()
+        if self.provider is None:
+            raise ValueError('No LLM provider configured: set GUARDML_LLM_PROVIDER=ollama, '
+                             'or GEMINI_API_KEY / ANTHROPIC_API_KEY')
 
     def generate(
         self,
@@ -97,27 +98,14 @@ class PostMortemGenerator:
             diagnosis=diagnosis,
         )
 
-        # Try models in order — fallback if overloaded or deprecated
-        models_to_try = [
-            self.model_name,
-            'gemini-1.5-flash',
-            'gemini-3.5-flash',
-            'gemini-3.5-flash-lite',
-        ]
-        last_error = None
-        for model in models_to_try:
-            try:
-                response = self.client.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                )
-                report = response.text
-                break
-            except Exception as e:
-                last_error = e
-                continue
-        else:
-            raise last_error
+        response = self.provider.generate(
+            'You write factual incident post-mortems from the evidence given, nothing else.',
+            [{'role': 'user', 'content': prompt}],
+            [],
+        )
+        if response is None or not response.text:
+            raise RuntimeError(f'{self.provider.name}/{self.provider.model} returned no post-mortem text')
+        report = response.text
 
         # Save to file
         filename = REPORTS_DIR / f'postmortem_{session_id[:8]}_{int(time.time())}.md'

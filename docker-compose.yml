@@ -15,6 +15,10 @@ services:
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-5-5}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-}
+      # Local model: GUARDML_LLM_PROVIDER=ollama; Ollama runs on the host, not in compose
+      - GUARDML_LLM_PROVIDER=${GUARDML_LLM_PROVIDER:-}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
       - MLFLOW_TRACKING_URI=sqlite:///./demo/mlruns.db
       - GUARDML_DB=/app/data/guardml.db
       - GUARDML_ENVIRONMENT=${GUARDML_ENVIRONMENT:-staging}

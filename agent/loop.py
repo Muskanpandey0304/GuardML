@@ -348,7 +348,7 @@ class AgentLoop:
         return done(
             '🔍 **Demo mode** (no LLM API key configured): a scripted investigation ran four '
             'read-only tools through ToolGuard. Open each step in the panel for the real tool '
-            'output. Configure GEMINI_API_KEY or ANTHROPIC_API_KEY for an LLM-written diagnosis.'
+            'output. Configure GEMINI_API_KEY, ANTHROPIC_API_KEY or GUARDML_LLM_PROVIDER=ollama for an LLM-written diagnosis.'
         )
 
     def _emit(self, step: Dict[str, Any]) -> None:

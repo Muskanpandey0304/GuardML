@@ -21,7 +21,7 @@ from guardml.agent.llm import select_provider  # noqa: E402  (after load_dotenv 
 def main() -> int:
     provider = select_provider()
     if provider is None:
-        print('No LLM provider selected: set GEMINI_API_KEY or ANTHROPIC_API_KEY in .env, '
+        print('No LLM provider selected: set GEMINI_API_KEY or ANTHROPIC_API_KEY in .env (or GUARDML_LLM_PROVIDER=ollama), '
               'and make sure GUARDML_LLM_PROVIDER is not set to "demo".')
         return 2
     print(f'Provider: {provider.name}   model: {provider.model}')

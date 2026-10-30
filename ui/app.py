@@ -360,7 +360,7 @@ with tab_reports:
     if submitted and pm_session and pm_diagnosis:
         with st.spinner('Generating report...'):
             try:
-                r = api_post('/postmortem', {'session_id': pm_session, 'diagnosis': pm_diagnosis, 'title': pm_title}, timeout=30)
+                r = api_post('/postmortem', {'session_id': pm_session, 'diagnosis': pm_diagnosis, 'title': pm_title}, timeout=600)
                 if r.ok:
                     report = r.json().get('report', '')
                     st.markdown(report)

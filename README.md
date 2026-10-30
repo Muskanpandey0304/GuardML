@@ -46,7 +46,7 @@ Rules in the system prompt are suggestions to the model. GuardML enforces them i
 ```
 User ──► Streamlit UI ──► FastAPI (auth, roles, two-person approval rule)
                               │
-                         Agent loop ── LLM (Claude or Gemini) proposes tool calls
+                         Agent loop ── LLM (Claude, Gemini or local Ollama) proposes tool calls
                               │
                               ▼   EVERY call, no exceptions
                    ┌────────────────────────┐
@@ -135,7 +135,9 @@ streamlit run ui/app.py      # in a second terminal
 ```
 
 With no LLM key set, a deterministic **demo mode** runs a scripted tool plan through the same real guard.
-Set `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` (optionally `GUARDML_LLM_PROVIDER=anthropic|gemini|demo`) for a real model.
+Set `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` (optionally `GUARDML_LLM_PROVIDER=anthropic|gemini|ollama|demo`) for a real model.
+For a free local model, run [Ollama](https://ollama.com), `ollama pull qwen2.5:7b`, and set `GUARDML_LLM_PROVIDER=ollama`
+(`OLLAMA_MODEL` / `OLLAMA_HOST` override the defaults).
 
 ### Tests and benchmark
 
@@ -175,7 +177,7 @@ Prototype, not a production deployment: the one live-model run (Gemini flash-lit
 live numbers say nothing about the guard yet; the held-out attacks were written
 by the same author as the guard; docker / kubectl / dvc fixtures are synthetic; provenance matches literal
 tokens, so a paraphrased value ("the second version") slips past it; the audit chain is tamper-*evident* but
-someone with write access to the database can recompute it; the post-mortem generator needs a Gemini key;
+someone with write access to the database can recompute it; the post-mortem generator needs an LLM provider (Ollama, Gemini or Anthropic);
 the Docker setup has not been built or run yet (it was developed on a machine without Docker).
 See [docs/DESIGN.md](docs/DESIGN.md).
 
