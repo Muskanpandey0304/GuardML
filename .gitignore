@@ -25,3 +25,6 @@ reports/*.md
 Thumbs.db
 demo/artifacts/
 demo/*.bak
+
+# AgentDojo per-task logs (large; results/ is what gets committed)
+benchmarks/agentdojo/runs/
