@@ -106,8 +106,10 @@ def pick(ids: List[str], explicit: Optional[str], limit: int) -> Optional[List[s
 
 
 def run_live(args: argparse.Namespace, suites: Dict[str, Any]) -> Dict[str, Any]:
-    from .pipeline import build_pipeline   # imports openai; only needed for live runs
+    from guardml.bench.cloud import ensure_ollama   # starts `ollama serve` if it is down, pulls the model if missing
+    from .pipeline import build_pipeline            # imports openai; only needed for live runs
 
+    ensure_ollama(args.model)
     model = ensure_context_model(args.model, args.num_ctx)
     summary: Dict[str, Any] = {}
     for defence in [d.strip() for d in args.defence.split(',')]:
