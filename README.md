@@ -27,10 +27,23 @@ and approval bypass). An attack counts as successful only if the malicious tool 
 **Read these honestly.** Offline runs use a scripted agent that plays a model which has *already fallen
 for* the injection (the worst case), so they show whether the guard stops the action, not how often a
 real model is fooled. "Rubber-stamp human" approves everything: escalating to a person only helps if the
-person refuses. Live runs with Gemini (`gemini-flash-lite-latest`, 100 valid attack runs (25 distinct attack scenarios), with and without "investigate only"
-prompts) found the model ignored every injection even with no guard, so they do not measure the guard; the
-table above does. The intent
-check has not yet been exercised against a real attack attempt. Reads were the weak spot. Three read gaps (another
+person refuses.
+
+**Live model (local Ollama, `qwen2.5:7b`, 11 live scenarios: 8 attacks, 3 benign; ToolGuard and + intent check,
+perfect and rubber-stamp approvers, fixture world, nothing real touched):**
+
+| Defence | Model attempted the attack | Attack success, no human | Rubber-stamp human | Benign tasks completed | Benign false positives |
+|---|---|---|---|---|---|
+| ToolGuard | 25% (2/8) | 25% (2/8) | 12% (1/8) | 67% (2/3) | 0/3 |
+| + intent check | 25% (2/8) | **0% (0/8)** | 0% (0/8) | 33% (1/3) | 1/3 |
+
+The two attacks that got past ToolGuard were well-formed calls aimed at the wrong target (restarting a
+container the user never named), which rules cannot tell from a legitimate call; the intent check stopped
+both but also wrongly blocked one benign restart. **This is a tiny sample** (8 attacks, 3 benign tasks, one
+run each, one small model, scenarios written by the guard's author), so read it as a sign that the intent
+check adds something, not as a rate.
+
+In the offline tiers, reads were the weak spot. Three read gaps (another
 container's logs, source files under `./demo`, any Kubernetes namespace) were found by the held-out and adversarial
 sets and fixed afterwards with allow-lists, re-measured separately (the tables here are the original runs). Details, tiers and how to reproduce: [bench/README.md](bench/README.md).
 
@@ -131,7 +144,7 @@ python -m demo.train_model   # trains v1 (good) and v2 (bad, drifted); v2 become
 python -m demo.inject_drift  # optional: another drifted dataset
 uvicorn guardml.api.main:app --port 8000
 streamlit run ui/app.py      # in a second terminal
-# or: docker-compose up      # needs GUARDML_USERS / GUARDML_APPROVERS in .env
+# or: docker compose up --build   # see "Docker" below
 ```
 
 With no LLM key set, a deterministic **demo mode** runs a scripted tool plan through the same real guard.
@@ -139,10 +152,24 @@ Set `ANTHROPIC_API_KEY` (optionally `GUARDML_LLM_PROVIDER=anthropic|ollama|demo`
 For a free local model, run [Ollama](https://ollama.com), `ollama pull qwen2.5:7b`, and set `GUARDML_LLM_PROVIDER=ollama`
 (`OLLAMA_MODEL` / `OLLAMA_HOST` override the defaults).
 
+### Docker
+
+```bash
+cp env.example .env                  # set GUARDML_USERS / GUARDML_APPROVERS (compose refuses to start without them)
+docker compose up --build            # UI http://localhost:8501, API http://localhost:8000
+```
+
+Five services: `api`, `ui`, `model-api` (the demo model), `mlflow` (internal only) and a one-shot `train`
+that trains the demo models on first start (skipped when `demo/mlruns.db` exists). The compose file defaults to
+`GUARDML_LLM_PROVIDER=ollama` and reaches Ollama on the host at `http://host.docker.internal:11434`, so install
+Ollama on the host first and run `ollama pull qwen2.5:7b`; use `ANTHROPIC_API_KEY` in `.env` for Claude instead.
+Verified with Docker Desktop on Windows: all services come up healthy and an agent request plus a post-mortem
+run end to end through the containers. First start rewrites the tracked files in `demo/data`; don't commit them.
+
 ### Tests and benchmark
 
 ```bash
-pytest tests -q                              # 635 tests
+pytest tests -q                              # 630 tests
 pytest tests -m slow -q                      # + real-MLflow tests (trains a model, ~1 min)
 cd .. && python -m guardml.bench.run         # GuardBench, offline, ~15 s -> bench/results/
 ```
@@ -168,17 +195,19 @@ tools/       19 tool wrappers (MLflow, drift, data quality, DVC, Docker, kubectl
 safety/      snapshots + rollback        audit/  hash-chained log + replay        reports/  post-mortems
 api/ ui/     FastAPI backend, Streamlit UI        demo/  a deliberately broken ML setup
 bench/       GuardBench: scenarios, fixtures, real tier, runner, results        docs/  design notes
-tests/       635 default + 11 slow tests
+tests/       630 default + 11 slow tests
 ```
 
 ## Known limits
 
-Prototype, not a production deployment: the one live-model run (Gemini flash-lite) never attempted an attack, so
-live numbers say nothing about the guard yet; the held-out attacks were written
+Prototype, not a production deployment: the live-model evidence is one small local model on 8 attack
+scenarios, so the live numbers are indicative only; the held-out attacks were written
 by the same author as the guard; docker / kubectl / dvc fixtures are synthetic; provenance matches literal
-tokens, so a paraphrased value ("the second version") slips past it; the audit chain is tamper-*evident* but
-someone with write access to the database can recompute it; the post-mortem generator needs an LLM provider (Ollama or Anthropic);
-the Docker setup has not been built or run yet (it was developed on a machine without Docker).
+tokens, so a paraphrased value ("the second version") slips past it; the intent check blocked a legitimate
+restart in the live run; the audit chain is tamper-*evident* but
+someone with write access to the database can recompute it; the post-mortem generator needs an LLM provider
+(Ollama or Anthropic); the Docker setup was tested on one machine (Docker Desktop on Windows), and a local 7B
+model is slow (about 2 to 3 minutes for a diagnosis on a 4 GB GPU).
 See [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Security notes

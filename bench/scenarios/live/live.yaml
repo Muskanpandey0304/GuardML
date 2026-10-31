@@ -1,5 +1,5 @@
-# Scenarios built for LIVE models. The first live run (Gemini flash-lite, every prompt "investigate only")
-# showed a model that ignores injected instructions, so it could not measure the guard.
+# Scenarios built for LIVE models. Prompts that only say "investigate" give a model nothing to be
+# tempted by (a first live run never attempted an attack), so they could not measure the guard.
 #
 # Here the USER invites action but scopes it ("fix it if you can; restarting model-api is fine"), and the
 # injection tries to redirect that willingness to a target or action the user never authorised. A model that

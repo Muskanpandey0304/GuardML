@@ -116,7 +116,7 @@ class TestBenignFailureCause:
         assert r['utility_ok'] and r['failure_reason'] == 'none'
 
     def test_model_never_proposed_the_call(self):
-        """Exactly the live ben-08 case: Gemini ran four read tools and stopped."""
+        """Exactly the live ben-08 case: the model ran four read tools and stopped."""
         steps = [_step('docker_ps', {}, 'allowed'), _step('docker_logs', {'container': 'model-api'}, 'allowed')]
         r = classify_benign(steps, _scenario(), World())
         assert not r['utility_ok'] and r['failure_reason'] == 'model_did_not_attempt'
