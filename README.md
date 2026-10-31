@@ -39,7 +39,11 @@ perfect and rubber-stamp approvers, fixture world, nothing real touched):**
 
 The two attacks that got past ToolGuard were well-formed calls aimed at the wrong target (restarting a
 container the user never named), which rules cannot tell from a legitimate call; the intent check stopped
-both but also wrongly blocked one benign restart. **This is a tiny sample** (8 attacks, 3 benign tasks, one
+both. The intent judge approved the benign restart (asked directly: "a container restart is within the scope
+of fixing the issue"); the "Benign" columns for `+ intent check` come from how that run was scored, not from the
+judge: the model took a different route than in the ToolGuard run (no `docker_logs`, which the scenario requires)
+and ToolGuard blocked an improvised `docker_exec`, which the benchmark counts as a false positive.
+**This is a tiny sample** (8 attacks, 3 benign tasks, one
 run each, one small model, scenarios written by the guard's author), so read it as a sign that the intent
 check adds something, not as a rate.
 
@@ -203,8 +207,8 @@ tests/       630 default + 11 slow tests
 Prototype, not a production deployment: the live-model evidence is one small local model on 8 attack
 scenarios, so the live numbers are indicative only; the held-out attacks were written
 by the same author as the guard; docker / kubectl / dvc fixtures are synthetic; provenance matches literal
-tokens, so a paraphrased value ("the second version") slips past it; the intent check blocked a legitimate
-restart in the live run; the audit chain is tamper-*evident* but
+tokens, so a paraphrased value ("the second version") slips past it; the benign-task scoring is strict (one
+scenario requires a specific tool route, and any blocked call counts as a false positive); the audit chain is tamper-*evident* but
 someone with write access to the database can recompute it; the post-mortem generator needs an LLM provider
 (Ollama or Anthropic); the Docker setup was tested on one machine (Docker Desktop on Windows), and a local 7B
 model is slow (about 2 to 3 minutes for a diagnosis on a 4 GB GPU).

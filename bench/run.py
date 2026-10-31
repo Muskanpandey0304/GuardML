@@ -14,6 +14,8 @@ a model that already fell for the trap). Live mode lets a real model decide.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import shutil
 import sys
 import tempfile
@@ -59,6 +61,31 @@ def _select(scenarios: List[Scenario], split: str, only: Optional[str], limit: i
     return scenarios[:limit] if limit else scenarios
 
 
+def _load_checkpoint(path: Path, fingerprint: Dict[str, Any]) -> Dict[tuple, List[Dict[str, Any]]]:
+    """Finished runs from a checkpoint file: {(config, scenario, approver, repeat): [records]}."""
+    lines = path.read_text(encoding='utf-8').splitlines()
+    if not lines:
+        return {}
+    if json.loads(lines[0]).get('fingerprint') != fingerprint:
+        raise SystemExit(f'{path} was written by a different run (model, split, configs, approvers or scenarios '
+                         'differ). Delete it to start over, or fix the arguments to match.')
+    done: Dict[tuple, List[Dict[str, Any]]] = {}
+    for line in lines[1:]:
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue  # a line torn by a crash mid-write: that run is simply done again
+        done[tuple(item['key'])] = item['records']
+    return done
+
+
+def _append_checkpoint(path: Path, key: tuple, batch: List[Dict[str, Any]]) -> None:
+    with path.open('a', encoding='utf-8') as f:
+        f.write(json.dumps({'key': list(key), 'records': batch}, default=str) + '\n')
+        f.flush()
+        os.fsync(f.fileno())
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description='GuardBench', formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog=__doc__)
@@ -79,6 +106,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help='naive = a real model told to obey instructions found in tool output (stand-in for an easily fooled model)')
     ap.add_argument('--out', default=str(RESULTS_DIR))
     ap.add_argument('--tag', default=None)
+    ap.add_argument('--checkpoint', default=None,
+                    help='file that records each finished run so a killed session can continue '
+                         '(default for live mode: <out>/<tag>.partial.jsonl; use "off" to disable)')
+    ap.add_argument('--resume', action='store_true',
+                    help='continue from an existing checkpoint file, skipping runs already finished')
     args = ap.parse_args(argv)
 
     if args.tier == 'real':
@@ -139,6 +171,34 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     provider_factory = (lambda sc: CountingProvider(inner)) if live else None
 
+    tag = args.tag or f"{args.tier}-{args.mode}-{args.split}"
+
+    # Checkpoint: every finished run is appended to a file, so a killed session (Kaggle, Colab, a closed laptop)
+    # can continue with --resume instead of starting over. Runs that errored or got no LLM answer are not saved,
+    # so a resume does them again.
+    ckpt: Optional[Path] = None
+    done: Dict[tuple, List[Dict[str, Any]]] = {}
+    if args.checkpoint != 'off':
+        if args.checkpoint:
+            ckpt = Path(args.checkpoint)
+        elif live or args.resume:
+            ckpt = Path(args.out) / f'{tag}.partial.jsonl'
+    if ckpt is not None:
+        fingerprint = {
+            'tier': args.tier, 'mode': args.mode, 'split': args.split, 'agent_prompt': args.agent_prompt,
+            'model': f'{inner.name}/{inner.model}' if inner else None, 'repeat': args.repeat if live else 1,
+            'configs': [c.name for c in configs], 'approvers': approvers, 'scenarios': [s.id for s in scenarios],
+        }
+        if ckpt.exists() and ckpt.stat().st_size and not args.resume:
+            print(f'{ckpt} already exists. Re-run with --resume to continue it, or delete it to start over.')
+            return 2
+        if args.resume and ckpt.exists():
+            done = _load_checkpoint(ckpt, fingerprint)
+            print(f'Resuming: {len(done)} runs already finished in {ckpt.name}.')
+        else:
+            ckpt.parent.mkdir(parents=True, exist_ok=True)
+            ckpt.write_text(json.dumps({'fingerprint': fingerprint}) + '\n', encoding='utf-8')
+
     records: List[Dict[str, Any]] = []
     try:
         for cfg in configs:
@@ -146,15 +206,22 @@ def main(argv: Optional[List[str]] = None) -> int:
             for sc in scenarios:
                 runs_for = [approvers[0]] if sc.approval_attack is not None else approvers
                 for approver in runs_for:
-                    for _ in range(args.repeat if live else 1):
+                    for rep in range(args.repeat if live else 1):
+                        key = (cfg.name, sc.id, approver, rep)
+                        if key in done:
+                            records.extend(done[key])
+                            print('s', end='', flush=True)
+                            continue
                         rec = run_scenario(env, sc, cfg, approver, provider_factory=provider_factory,
                                            judge_factory=judge_factory, mode=args.mode,
                                            agent_prompt=args.agent_prompt)
-                        records.append(rec)
-                        print('E' if rec.get('error') else '.', end='', flush=True)
+                        batch = [rec]
                         if sc.approval_attack is not None:  # approver is irrelevant; mirror for the rubber-stamp column
-                            for other in approvers[1:]:
-                                records.append(dict(rec, approver=other))
+                            batch += [dict(rec, approver=other) for other in approvers[1:]]
+                        records.extend(batch)
+                        print('E' if rec.get('error') else '.', end='', flush=True)
+                        if ckpt is not None and not rec.get('error') and not rec.get('llm_failed'):
+                            _append_checkpoint(ckpt, key, batch)
             print()
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
@@ -165,7 +232,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     summary = summarize(records)
     attacks = [s for s in scenarios if s.is_attack]
-    tag = args.tag or f"{args.tier}-{args.mode}-{args.split}"
     models_used: Dict[str, int] = {}
     for r in records:
         for m, n in (r.get('models_used') or {}).items():
@@ -192,6 +258,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f'WARNING: {len(failed)} of {len(records)} runs got no/partial LLM response (rate limit or outage) and were EXCLUDED '
               'from the results. If most runs failed the provider is throttling you: wait and re-run.')
         return 1
+    if ckpt is not None:
+        ckpt.unlink(missing_ok=True)  # complete: the results files above are the record
     return 0
 
 

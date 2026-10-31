@@ -357,6 +357,57 @@ class TestCli:
         monkeypatch.undo()
         _restore_default_db_modules()
 
+    def test_checkpoint_resume_continues_a_killed_run_and_matches_a_clean_one(self, tmp_path, monkeypatch):
+        from guardml.bench import run as runmod
+        monkeypatch.setenv('GUARDML_DB', str(tmp_path / 'seed.db'))
+        args = ['--limit', '6', '--configs', 'a_no_guard,c_toolguard', '--tag', 'ck']
+        ckpt = tmp_path / 'ck.partial.jsonl'
+
+        real, calls = runmod.run_scenario, {'n': 0}
+
+        def counting(*a, **k):
+            calls['n'] += 1
+            return real(*a, **k)
+
+        clean = tmp_path / 'clean'
+        monkeypatch.setattr(runmod, 'run_scenario', counting)
+        assert runmod.main(args + ['--out', str(clean), '--checkpoint', 'off']) == 0
+        expected = json.loads((clean / 'ck.json').read_text(encoding='utf-8'))['records']
+        total_runs, calls['n'] = calls['n'], 0
+
+        def dies_on_5th(*a, **k):
+            calls['n'] += 1
+            if calls['n'] == 5:
+                raise KeyboardInterrupt  # the session is killed here
+            return real(*a, **k)
+
+        out = tmp_path / 'resumed'
+        monkeypatch.setattr(runmod, 'run_scenario', dies_on_5th)
+        with pytest.raises(KeyboardInterrupt):
+            runmod.main(args + ['--out', str(out), '--checkpoint', str(ckpt)])
+        assert len(ckpt.read_text(encoding='utf-8').splitlines()) == 1 + 4   # header + 4 finished runs
+
+        assert runmod.main(args + ['--out', str(out), '--checkpoint', str(ckpt)]) == 2   # refuses to overwrite silently
+
+        monkeypatch.setattr(runmod, 'run_scenario', counting)
+        calls['n'] = 0
+        assert runmod.main(args + ['--out', str(out), '--checkpoint', str(ckpt), '--resume']) == 0
+        resumed = json.loads((out / 'ck.json').read_text(encoding='utf-8'))['records']
+        assert calls['n'] == total_runs - 4              # only the unfinished runs were executed
+        key = lambda r: (r['config'], r['scenario'], r['approver'])
+        assert sorted(map(key, resumed)) == sorted(map(key, expected))
+        assert [r.get('attack_outcome') for r in sorted(resumed, key=key)] == [r.get('attack_outcome') for r in sorted(expected, key=key)]
+        assert not ckpt.exists()                       # removed once the run completed
+
+    def test_checkpoint_from_a_different_run_is_rejected(self, tmp_path, monkeypatch):
+        from guardml.bench import run as runmod
+        monkeypatch.setenv('GUARDML_DB', str(tmp_path / 'seed.db'))
+        ckpt = tmp_path / 'x.partial.jsonl'
+        ckpt.write_text(json.dumps({'fingerprint': {'model': 'other'}}) + '\n', encoding='utf-8')
+        with pytest.raises(SystemExit):
+            runmod.main(['--limit', '3', '--configs', 'c_toolguard', '--out', str(tmp_path),
+                         '--checkpoint', str(ckpt), '--resume'])
+
     def test_live_mode_requires_a_key_and_explicit_confirmation(self, tmp_path, monkeypatch):
         from guardml.bench.run import main
         for k in ('ANTHROPIC_API_KEY', 'GUARDML_LLM_PROVIDER'):

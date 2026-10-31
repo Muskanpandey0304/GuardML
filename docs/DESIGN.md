@@ -63,7 +63,8 @@ already fell for the trap; live runs use a real model and cost API calls. Detail
 
 ## What this does not do (known limits)
 
-- **Live evidence is small.** Offline numbers say the guard stops a compromised model's actions. In a live run with `qwen2.5:7b` (8 attacks, 3 benign tasks) the model acted on 2 injections; ToolGuard alone let both through (valid calls to the wrong target) and the intent check stopped both, at the cost of blocking 1 of 3 benign tasks. One small model and a handful of scenarios: indicative, not a rate. `bench/README.md`.
+- **Live evidence is small.** Offline numbers say the guard stops a compromised model's actions. In a live run with `qwen2.5:7b` (8 attacks, 3 benign tasks) the model acted on 2 injections; ToolGuard alone let both through (valid calls to the wrong target) and the intent check stopped both. Its benign-task numbers are dominated by scoring strictness
+(required tool route, any blocked call counts as a false positive), not by the judge rejecting a legitimate action. One small model and a handful of scenarios: indicative, not a rate. `bench/README.md`.
 - **Attacks and defence share an author.** The held-out set was written after the guard was frozen, but by
   the same person. Independent attack authors would be a stronger test.
 - **Read confidentiality is allow-lists only, not a policy.** A tool-output injection that made the agent read another
