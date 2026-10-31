@@ -48,6 +48,12 @@ task needs, and calls the model improvises are listed separately in the report.
 run each, one small model, scenarios written by the guard's author), so read it as a sign that the intent
 check adds something, not as a rate.
 
+**Independent check (AgentDojo, not written by us).** On the external [AgentDojo](benchmarks/agentdojo) benchmark
+(banking suite, `qwen2.5:14b`, 8 user x 5 injection tasks = 40 attack pairs), the attack succeeded in 26 of 40 with no
+guard and in 0 of 40 with provenance + the intent judge; the saved logs show the guard blocking the injected payments.
+It also cost normal work (5/8 to 3/8 tasks completed), mostly tasks that delegate to a file or page. One suite, one
+model, one attack, a small slice: see [benchmarks/agentdojo](benchmarks/agentdojo) for the caveats.
+
 In the offline tiers, reads were the weak spot. Three read gaps (another
 container's logs, source files under `./demo`, any Kubernetes namespace) were found by the held-out and adversarial
 sets and fixed afterwards with allow-lists, re-measured separately (the tables here are the original runs). Details, tiers and how to reproduce: [bench/README.md](bench/README.md).

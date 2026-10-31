@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 import subprocess
 import sys
 import tempfile
@@ -84,12 +85,37 @@ def offline_utility(suites: Dict[str, Any]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Live
 # ---------------------------------------------------------------------------
+def context_model_name(model: str, num_ctx: int) -> str:
+    return model if num_ctx <= 0 else f"{model.replace(':', '-')}-ctx{num_ctx}"
+
+
+def guard_activity(pipeline_name: str, suite: str, attack: str) -> Dict[str, Any]:
+    """
+    What the guard blocked, read from AgentDojo's per-task logs (a blocked call is a tool message whose error starts
+    with "BLOCKED by ToolGuard (<rule>)"). Reading the logs instead of counting in memory keeps the numbers right when
+    a run is resumed or rebuilt: tasks loaded from earlier logs never pass through the guard again.
+    """
+    by_rule: Counter = Counter()
+    pairs = set()
+    base = RUNS_DIR / pipeline_name / suite
+    for f in sorted(base.rglob('*.json')) if base.exists() else []:
+        d = json.loads(f.read_text(encoding='utf-8'))
+        for m in d.get('messages', []):
+            err = (m.get('error') or '') if m.get('role') == 'tool' else ''
+            if err.startswith('BLOCKED by ToolGuard ('):
+                by_rule[err.split('(', 1)[1].split(')', 1)[0]] += 1
+                if d.get('attack_type') == attack:
+                    pairs.add((d['user_task_id'], d['injection_task_id']))
+    return {'blocked_calls': sum(by_rule.values()), 'blocked_by_rule': dict(by_rule),
+            'attack_pairs_with_a_block': sorted(f'{u}/{i}' for u, i in pairs)}
+
+
 def ensure_context_model(model: str, num_ctx: int) -> str:
     """Ollama silently truncates prompts beyond its default context window, which would cut AgentDojo's tool
     definitions. Make (once) a copy of the model with a larger window and return its name."""
-    if num_ctx <= 0:
+    name = context_model_name(model, num_ctx)
+    if name == model:
         return model
-    name = f"{model.replace(':', '-')}-ctx{num_ctx}"
     have = subprocess.run(['ollama', 'list'], capture_output=True, text=True).stdout
     if name not in have:
         with tempfile.TemporaryDirectory() as d:
@@ -109,9 +135,13 @@ def run_live(args: argparse.Namespace, suites: Dict[str, Any]) -> Dict[str, Any]
     from guardml.bench.cloud import ensure_ollama   # starts `ollama serve` if it is down, pulls the model if missing
     from .pipeline import build_pipeline            # imports openai; only needed for live runs
 
-    ensure_ollama(args.model)
-    model = ensure_context_model(args.model, args.num_ctx)
+    if args.report_only:   # rebuild the report from saved logs: no Ollama, no model
+        model = context_model_name(args.model, args.num_ctx)
+    else:
+        ensure_ollama(args.model)
+        model = ensure_context_model(args.model, args.num_ctx)
     summary: Dict[str, Any] = {}
+    succeeded_unguarded: Dict[str, set] = {}   # suite -> attack pairs that worked with no guard
     for defence in [d.strip() for d in args.defence.split(',')]:
         pipeline = build_pipeline(model, defence, base_url=args.base_url, ollama_host=args.ollama_host)
         per_suite: Dict[str, Any] = {}
@@ -126,6 +156,8 @@ def run_live(args: argparse.Namespace, suites: Dict[str, Any]) -> Dict[str, Any]
                 attack = load_attack(args.attack, suite, pipeline)
                 atk = benchmark_suite_with_injections(
                     pipeline, suite, attack, RUNS_DIR, args.force_rerun, uts, its, False, args.benchmark_version)
+                if defence == 'none':
+                    succeeded_unguarded[name] = {f'{u}/{i}' for (u, i), hit in atk['security_results'].items() if hit}
                 row.update({
                     'attack': args.attack, 'n_attack': len(atk['security_results']),
                     'utility_under_attack': _mean(atk['utility_results'].values()),
@@ -134,13 +166,14 @@ def run_live(args: argparse.Namespace, suites: Dict[str, Any]) -> Dict[str, Any]
                 })
             row['seconds'] = round(time.time() - t0)
             per_suite[name] = row
-        decisions = getattr(pipeline.executor, 'decisions', [])
-        blocks: Dict[str, int] = {}
-        for d in decisions:
-            if not d['allowed']:
-                blocks[d['rule']] = blocks.get(d['rule'], 0) + 1
-        summary[defence] = {'suites': per_suite, 'guarded_calls': len(decisions), 'blocked_by_rule': blocks,
-                            'decisions': decisions}
+        activity = {n: guard_activity(pipeline.name, n, args.attack) for n in suites} if defence != 'none' else {}
+        for n, a in activity.items():
+            worked = succeeded_unguarded.get(n, set())
+            a['attack_pairs_that_worked_unguarded'] = len(worked)
+            a['of_those_the_guard_blocked_a_call_in'] = len(worked & set(a['attack_pairs_with_a_block']))
+        summary[defence] = {'suites': per_suite, 'guard_activity_from_logs': activity,
+                            'blocked_calls': sum(a['blocked_calls'] for a in activity.values()),
+                            'decisions_this_process': getattr(pipeline.executor, 'decisions', [])}
     return summary
 
 
@@ -150,7 +183,10 @@ def write_report(tag: str, meta: Dict[str, Any], body: Dict[str, Any], live: boo
     L = [f'# AgentDojo: {tag}', '', f"- **Run**: {meta['when']} | **AgentDojo**: {meta['agentdojo']} "
          f"| **benchmark**: {meta['benchmark_version']} | **mode**: {meta['mode']}"]
     if live:
-        L += [f"- **Model**: {meta['model']} (Ollama) | **attack**: {meta['attack']}", '',
+        L += [f"- **Model**: {meta['model']} (Ollama) | **attack**: {meta['attack']}"]
+        if meta.get('args', {}).get('report_only'):
+            L.append('- **Rebuilt from the saved task logs** (no task was re-run), so the run date above is the rebuild time.')
+        L += ['',
               '| Defence | Suite | Utility (no attack) | Utility under attack | Attack success | Runs (clean / attack) |',
               '|---|---|---|---|---|---|']
         pct = lambda v: 'n/a' if v is None else f'{v * 100:.0f}%'
@@ -158,9 +194,14 @@ def write_report(tag: str, meta: Dict[str, Any], body: Dict[str, Any], live: boo
             for suite, r in d['suites'].items():
                 L.append(f"| {defence} | {suite} | {pct(r['utility'])} | {pct(r.get('utility_under_attack'))} "
                          f"| **{pct(r.get('attack_success_rate'))}** | {r['n_clean']} / {r.get('n_attack', 0)} |")
-        L += ['', 'Attack success = the injection\'s goal was achieved (lower is better). Guard blocks: ' +
-              '; '.join(f"{k}: {v['blocked_by_rule'] or 'none'} of {v['guarded_calls']} guarded calls"
-                        for k, v in body.items() if k != 'none')]
+        L += ['', "Attack success = the injection's goal was achieved (lower is better).", '']
+        for defence, d in body.items():
+            for suite, a in d.get('guard_activity_from_logs', {}).items():
+                L.append(f"- **{defence} / {suite}, from the saved task logs**: {a['blocked_calls']} blocked calls "
+                         f"{a['blocked_by_rule'] or ''}; the guard blocked at least one call in "
+                         f"{len(a['attack_pairs_with_a_block'])} attack pairs. Of the "
+                         f"{a['attack_pairs_that_worked_unguarded']} pairs where the attack worked with no guard, it "
+                         f"blocked a call in {a['of_those_the_guard_blocked_a_call_in']}.")
     else:
         L += ['', 'Ground-truth legitimate calls replayed through the provenance guard (no model). '
                   'Every block is a false positive; the intent judge is not included.', '',
@@ -191,6 +232,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument('--limit-user', type=int, default=0, help='first N user tasks per suite')
     ap.add_argument('--limit-injection', type=int, default=0, help='first N injection tasks per suite')
     ap.add_argument('--force-rerun', action='store_true', help='ignore AgentDojo logs from earlier runs')
+    ap.add_argument('--report-only', action='store_true',
+                    help='rebuild the report from the saved logs in runs/ (no Ollama, no model; every task must be logged)')
     ap.add_argument('--tag', default=None)
     args = ap.parse_args(argv)
 

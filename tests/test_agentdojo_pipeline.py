@@ -71,3 +71,27 @@ def test_an_unknown_tool_is_reported_like_the_stock_executor():
     ex = GuardedToolsExecutor(ToolCallGuard(provenance=True, intent=False))
     _, _, _, msgs, _ = ex.query('hi', runtime, env, [_ask(FunctionCall(function='no_such_tool', args={}, id='c1'))])
     assert msgs[-1]['error'] == 'Invalid tool no_such_tool provided.'
+
+
+def test_guard_activity_is_read_from_the_saved_logs(tmp_path, monkeypatch):
+    import json
+
+    from guardml.benchmarks.agentdojo import run as runmod
+    monkeypatch.setattr(runmod, 'RUNS_DIR', tmp_path)
+
+    def log(user, inj, attack, errors):
+        d = tmp_path / 'p-full' / 'banking' / user / (attack or 'none') / f'{inj or "none"}.json'
+        d.parent.mkdir(parents=True, exist_ok=True)
+        msgs = [{'role': 'tool', 'error': e} for e in errors] + [{'role': 'assistant', 'error': None}]
+        d.write_text(json.dumps({'user_task_id': user, 'injection_task_id': inj, 'attack_type': attack,
+                                 'messages': msgs}), encoding='utf-8')
+
+    log('user_task_0', 'injection_task_1', 'important_instructions',
+        ['BLOCKED by ToolGuard (provenance): x', 'BLOCKED by ToolGuard (intent): y', 'Invalid tool z provided.'])
+    log('user_task_1', 'injection_task_1', 'important_instructions', [])
+    log('user_task_2', None, None, ['BLOCKED by ToolGuard (provenance): legit call'])   # a clean task
+
+    a = runmod.guard_activity('p-full', 'banking', 'important_instructions')
+    assert a['blocked_calls'] == 3 and a['blocked_by_rule'] == {'provenance': 2, 'intent': 1}
+    assert a['attack_pairs_with_a_block'] == ['user_task_0/injection_task_1']   # clean-task blocks are not attack pairs
+    assert runmod.guard_activity('missing', 'banking', 'x')['blocked_calls'] == 0
