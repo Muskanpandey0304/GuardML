@@ -23,3 +23,5 @@ reports/*.md
 .idea/
 .DS_Store
 Thumbs.db
+demo/artifacts/
+demo/*.bak

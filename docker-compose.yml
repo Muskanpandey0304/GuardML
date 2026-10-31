@@ -1,4 +1,3 @@
-version: '3.9'
 
 services:
   # GuardML FastAPI backend
@@ -6,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: guardml-app
     user: "1000:1000"
     ports:
       # Localhost only. Put an authenticated reverse proxy in front for remote access.
@@ -13,10 +13,8 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-5-5}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-}
       # Local model: GUARDML_LLM_PROVIDER=ollama; Ollama runs on the host, not in compose
-      - GUARDML_LLM_PROVIDER=${GUARDML_LLM_PROVIDER:-}
+      - GUARDML_LLM_PROVIDER=${GUARDML_LLM_PROVIDER:-ollama}
       - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
       - MLFLOW_TRACKING_URI=sqlite:///./demo/mlruns.db
@@ -30,6 +28,8 @@ services:
       - GUARDML_USERS=${GUARDML_USERS:?Set GUARDML_USERS in .env}
       - GUARDML_APPROVERS=${GUARDML_APPROVERS:?Set GUARDML_APPROVERS in .env}
       - GUARDML_CORS_ORIGINS=${GUARDML_CORS_ORIGINS:-http://localhost:8501}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets the container reach Ollama on the host (Linux needs this)
     volumes:
       - ./demo:/app/guardml/demo
       - ./reports:/app/guardml/reports
@@ -41,11 +41,30 @@ services:
       timeout: 5s
       retries: 3
 
+  # One-shot: trains the demo models on first start (skipped when the DB already exists)
+  train:
+    build:
+      context: .
+      dockerfile: demo/Dockerfile
+    image: guardml-demo
+    user: "1000:1000"
+    environment:
+      - MLFLOW_TRACKING_URI=sqlite:///./demo/mlruns.db
+    volumes:
+      - ./demo:/app/demo
+      - ./demo/artifacts:/app/mlruns
+    command: sh -c "test -f demo/mlruns.db || python -m demo.train_model"
+    restart: "no"
+
   # Demo model API: internal only (reachable by other containers as http://model-api:8001)
   model-api:
     build:
       context: .
       dockerfile: demo/Dockerfile
+    image: guardml-demo
+    depends_on:
+      train:
+        condition: service_completed_successfully
     user: "1000:1000"
     expose:
       - "8001"
@@ -55,6 +74,9 @@ services:
       - MODEL_ALIAS=production
     volumes:
       - ./demo:/app/demo
+      # Model artifacts live next to the DB so the paths stored in it are valid inside the container.
+      # Train once with: docker compose run --rm model-api python -m demo.train_model
+      - ./demo/artifacts:/app/mlruns
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 10s
@@ -64,28 +86,30 @@ services:
   # MLflow UI: internal only. It has no authentication, so it is not published.
   # To view it locally, uncomment the ports lines below (localhost only).
   mlflow:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: guardml-app
     user: "1000:1000"
     expose:
       - "5000"
     # ports:
     #   - "127.0.0.1:5000:5000"
-    environment:
-      - HOME=/tmp            # writable home for the non-root user
-      - PIP_NO_CACHE_DIR=1
     volumes:
       - ./demo:/app/demo
+      - ./demo/artifacts:/app/mlruns
     working_dir: /app
-    command: >
-      sh -c "pip install --user mlflow &&
-             python -m mlflow ui --backend-store-uri sqlite:///./demo/mlruns.db
-             --host 0.0.0.0 --port 5000"
+    command: python -m mlflow ui --backend-store-uri sqlite:///./demo/mlruns.db --host 0.0.0.0 --port 5000
+    depends_on:
+      train:
+        condition: service_completed_successfully
 
   # Streamlit UI
   ui:
     build:
       context: .
       dockerfile: Dockerfile
+    image: guardml-app
     user: "1000:1000"
     ports:
       - "127.0.0.1:8501:8501"

@@ -12,7 +12,7 @@ Conversation history is kept in a neutral format and converted per provider:
     {'role': 'tool',      'results': [{'id': str, 'name': str, 'content': str}]}
 
 `raw` lets a provider hand its own response back verbatim next turn (needed for
-Gemini thought signatures); other providers ignore it.
+provider-specific blobs); providers that don't need it ignore it.
 """
 from __future__ import annotations
 
@@ -28,7 +28,6 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 logger = logging.getLogger(__name__)
 
 DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-5-5'
-GEMINI_FALLBACK_MODELS = ['gemini-flash-lite-latest', 'gemini-3.5-flash', 'gemini-flash-latest']
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 1.5
 
@@ -133,140 +132,6 @@ class AnthropicProvider(LLMProvider):
                 wait = RETRY_BACKOFF_BASE ** attempt
                 logger.warning('Anthropic call failed (attempt %d): %s. Retrying in %.1fs', attempt + 1, e, wait)
                 time.sleep(wait)
-        return None
-
-
-# ---------------------------------------------------------------------------
-# Gemini (REST)
-# ---------------------------------------------------------------------------
-_GEMINI_SCHEMA_KEYS = {'type', 'description', 'properties', 'items', 'required', 'enum'}
-
-
-def gemini_schema(node: Any) -> Any:
-    """Reduce a JSON-schema fragment to the OpenAPI subset Gemini accepts."""
-    if isinstance(node, dict):
-        out = {}
-        for k, v in node.items():
-            if k == 'properties':
-                out[k] = {pk: gemini_schema(pv) for pk, pv in v.items()}
-            elif k in _GEMINI_SCHEMA_KEYS:
-                out[k] = gemini_schema(v)
-        if isinstance(out.get('type'), str):
-            out['type'] = out['type'].upper()
-        return out
-    if isinstance(node, list):
-        return [gemini_schema(v) for v in node]
-    return node
-
-
-class GeminiProvider(LLMProvider):
-    name = 'gemini'
-
-    def __init__(self, api_key: str, model: Optional[str] = None, session: Any = None):
-        self.api_key = api_key
-        self.model = model or os.getenv('GEMINI_MODEL') or GEMINI_FALLBACK_MODELS[0]
-        if session is None:
-            import requests
-            session = requests
-        self.http = session
-        self.last_model: Optional[str] = None  # the model that actually answered the last call
-
-    @staticmethod
-    def to_native(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        contents: List[Dict[str, Any]] = []
-        for m in messages:
-            role = m['role']
-            if role == 'user':
-                contents.append({'role': 'user', 'parts': [{'text': m['content']}]})
-            elif role == 'assistant':
-                parts = m.get('raw')
-                if not parts:
-                    parts = []
-                    if m.get('text'):
-                        parts.append({'text': m['text']})
-                    for tc in m.get('tool_calls', []):
-                        parts.append({'functionCall': {'name': tc.name, 'args': tc.input}})
-                contents.append({'role': 'model', 'parts': parts})
-            elif role == 'tool':
-                contents.append({
-                    'role': 'user',
-                    'parts': [
-                        {'functionResponse': {'name': r['name'], 'response': {'result': r['content']}}}
-                        for r in m['results']
-                    ],
-                })
-        return contents
-
-    @staticmethod
-    def parse(data: Dict[str, Any]) -> Optional[LLMResponse]:
-        candidates = data.get('candidates') or []
-        if not candidates:
-            return None
-        parts = (candidates[0].get('content') or {}).get('parts') or []
-        texts: List[str] = []
-        calls: List[ToolUse] = []
-        for part in parts:
-            if 'text' in part:
-                texts.append(part['text'])
-            elif 'functionCall' in part:
-                fc = part['functionCall']
-                calls.append(ToolUse(
-                    id=part.get('id') or str(uuid.uuid4()),
-                    name=fc['name'],
-                    input=dict(fc.get('args') or {}),
-                ))
-        return LLMResponse(text='\n'.join(texts).strip(), tool_calls=calls, raw=parts)
-
-    def _candidate_models(self) -> List[str]:
-        models = [self.model]
-        # GUARDML_GEMINI_NO_FALLBACK=1: never silently switch models (clean attribution for benchmarks).
-        if os.getenv('GUARDML_GEMINI_NO_FALLBACK', '').strip().lower() in ('1', 'true', 'yes'):
-            return models
-        models += [m for m in GEMINI_FALLBACK_MODELS if m not in models]
-        return models
-
-    def generate(self, system, messages, tools):
-        payload = {
-            'systemInstruction': {'parts': [{'text': system}]},
-            'contents': self.to_native(messages),
-        }
-        if tools:
-            payload['tools'] = [{
-                'functionDeclarations': [
-                    {
-                        'name': t['name'],
-                        'description': t.get('description', ''),
-                        'parameters': gemini_schema(t.get('input_schema', {'type': 'object'})),
-                    }
-                    for t in tools
-                ]
-            }]
-        # Key goes in a header, never in the URL: exception messages and logs include URLs.
-        headers = {'x-goog-api-key': self.api_key, 'Content-Type': 'application/json'}
-        candidates = self._candidate_models()
-        single = len(candidates) == 1
-        for model_name in candidates:
-            url = f'https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent'
-            for _attempt in range(5 if single else 2):  # single model: back off and retry on rate limits
-                try:
-                    resp = self.http.post(url, json=payload, headers=headers, timeout=25)
-                    if resp.status_code == 200:
-                        parsed = self.parse(resp.json())
-                        if parsed is None:
-                            break
-                        self.last_model = model_name
-                        return parsed
-                    if resp.status_code in (429, 503):
-                        logger.warning('Gemini %s returned %d (rate limit / capacity); %s.', model_name,
-                                       resp.status_code, 'backing off' if single else 'trying next model')
-                        if single:
-                            time.sleep(min(2 ** (_attempt + 1), 20))
-                            continue
-                        break
-                    logger.warning('Gemini API error %d on %s: %s', resp.status_code, model_name, resp.text[:200])
-                except Exception as e:
-                    logger.warning('Gemini call exception on %s: %s', model_name, type(e).__name__)
-                time.sleep(1)
         return None
 
 
@@ -411,13 +276,11 @@ def select_provider() -> Optional[LLMProvider]:
     """
     Pick a provider from the environment. Returns None => deterministic demo mode.
 
-    GUARDML_LLM_PROVIDER = anthropic | gemini | ollama | demo   (optional override)
-    Otherwise: Gemini if GEMINI_API_KEY/GOOGLE_API_KEY is set, else Anthropic if
-    ANTHROPIC_API_KEY is set, else demo mode. Ollama is only used when asked for explicitly
-    (model via OLLAMA_MODEL, default qwen2.5:7b).
+    GUARDML_LLM_PROVIDER = anthropic | ollama | demo   (optional override)
+    Otherwise: Anthropic if ANTHROPIC_API_KEY is set, else demo mode. Ollama is only used when
+    asked for explicitly (model via OLLAMA_MODEL, default qwen2.5:7b).
     """
     choice = os.getenv('GUARDML_LLM_PROVIDER', '').strip().lower()
-    gemini_key = _real_key(os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY'))
     anthropic_key = _real_key(os.getenv('ANTHROPIC_API_KEY'))
 
     if choice == 'demo':
@@ -426,10 +289,6 @@ def select_provider() -> Optional[LLMProvider]:
         return OllamaProvider()
     if choice == 'anthropic':
         return AnthropicProvider(anthropic_key) if anthropic_key else None
-    if choice == 'gemini':
-        return GeminiProvider(gemini_key) if gemini_key else None
-    if gemini_key:
-        return GeminiProvider(gemini_key)
     if anthropic_key:
         return AnthropicProvider(anthropic_key)
     return None

@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from guardml.agent.llm import (
-    AnthropicProvider, GeminiProvider, LLMResponse, ScriptedProvider, ToolUse,
-    gemini_schema, select_provider,
+    AnthropicProvider, LLMResponse, OllamaProvider, ScriptedProvider, ToolUse,
+    select_provider,
 )
 from guardml.agent.loop import AgentLoop
 from guardml.agent.schemas import get_tool_schemas, llm_schema
@@ -378,62 +378,68 @@ class TestProviders:
         result_block = native[2]['content'][0]
         assert set(result_block) == {'type', 'tool_use_id', 'content'}  # no stray keys
 
-    def test_gemini_conversion(self):
-        native = GeminiProvider.to_native(NEUTRAL)
-        assert native[1]['role'] == 'model'
-        assert native[1]['parts'][1] == {'functionCall': {'name': 'gpu_status', 'args': {}}}
-        assert native[2]['parts'][0]['functionResponse']['name'] == 'gpu_status'
+    def test_ollama_conversion(self):
+        native = OllamaProvider.to_native('sys', NEUTRAL)
+        assert native[0] == {'role': 'system', 'content': 'sys'}
+        assert native[2]['tool_calls'] == [{'function': {'name': 'gpu_status', 'arguments': {}}}]
+        assert native[3] == {'role': 'tool', 'tool_name': 'gpu_status', 'content': '{"ok": true}'}
 
-    def test_gemini_echoes_raw_parts_for_thought_signatures(self):
-        raw = [{'functionCall': {'name': 'gpu_status', 'args': {}}, 'thoughtSignature': 'abc'}]
-        msgs = [{'role': 'assistant', 'text': '', 'tool_calls': [], 'raw': raw}]
-        assert GeminiProvider.to_native(msgs)[0]['parts'] == raw
-
-    def test_gemini_response_parsing(self):
-        data = {'candidates': [{'content': {'parts': [
-            {'text': 'looking'},
-            {'functionCall': {'name': 'docker_ps', 'args': {'all': True}}},
-        ]}}]}
-        parsed = GeminiProvider.parse(data)
+    def test_ollama_response_parsing(self):
+        data = {'message': {'content': 'looking', 'tool_calls': [
+            {'function': {'name': 'docker_ps', 'arguments': {'all': True}}},
+            {'function': {'name': 'gpu_status', 'arguments': '{"x": 1}'}},   # some models send a JSON string
+        ]}}
+        parsed = OllamaProvider.parse(data)
         assert parsed.text == 'looking'
         assert parsed.tool_calls[0].name == 'docker_ps' and parsed.tool_calls[0].input == {'all': True}
+        assert parsed.tool_calls[1].input == {'x': 1}
+        assert OllamaProvider.parse({}) is None
 
-    def test_gemini_api_key_is_sent_in_a_header_not_the_url(self):
-        seen = {}
+    def test_ollama_request_shape_and_no_tools_key_when_empty(self):
+        sent = {}
 
         class Resp:
             status_code = 200
             text = ''
+
             def json(self):
-                return {'candidates': [{'content': {'parts': [{'text': 'hi'}]}}]}
+                return {'message': {'content': 'hi'}}
 
         class Http:
-            def post(self, url, json=None, headers=None, timeout=None):
-                seen.update(url=url, headers=headers)
+            def post(self, url, json=None, timeout=None):
+                sent.clear()
+                sent.update(url=url, **json)
                 return Resp()
 
-        out = GeminiProvider('SECRET-KEY-123', session=Http()).generate('sys', NEUTRAL[:1], [])
-        assert out.text == 'hi'
-        assert 'SECRET-KEY-123' not in seen['url'] and 'key=' not in seen['url']
-        assert seen['headers']['x-goog-api-key'] == 'SECRET-KEY-123'
+        p = OllamaProvider(model='m', host='localhost:11434', session=Http())
+        assert p.generate('sys', NEUTRAL[:1], []).text == 'hi'
+        assert sent['url'] == 'http://localhost:11434/api/chat' and sent['model'] == 'm'
+        assert sent['stream'] is False and 'tools' not in sent
+        p.generate('sys', NEUTRAL[:1], [{'name': 't', 'description': 'd', 'input_schema': {'type': 'object'}}])
+        assert sent['tools'][0]['function']['name'] == 't'
 
-    def test_gemini_schema_keeps_only_supported_keywords(self):
-        cleaned = gemini_schema({
-            'type': 'object',
-            'properties': {'lines': {'type': 'integer', 'default': 50, 'minimum': 1, 'x-guard': 'int'}},
-            'required': [],
-        })
-        assert cleaned['type'] == 'OBJECT'
-        assert cleaned['properties']['lines'] == {'type': 'INTEGER'}
+    def test_ollama_returns_none_after_repeated_failures(self, monkeypatch):
+        from guardml.agent import llm
+        monkeypatch.setattr(llm.time, 'sleep', lambda s: None)
+
+        class Resp:
+            status_code = 404
+            text = 'model not found'
+
+        class Http:
+            def post(self, *a, **k):
+                return Resp()
+
+        assert OllamaProvider(model='m', session=Http()).generate('s', NEUTRAL[:1], []) is None
 
     def test_select_provider_respects_override_and_placeholders(self, monkeypatch):
-        for k in ('GEMINI_API_KEY', 'GOOGLE_API_KEY', 'ANTHROPIC_API_KEY', 'GUARDML_LLM_PROVIDER'):
+        for k in ('ANTHROPIC_API_KEY', 'GUARDML_LLM_PROVIDER'):
             monkeypatch.delenv(k, raising=False)
         assert select_provider() is None
         monkeypatch.setenv('ANTHROPIC_API_KEY', 'your-key-here')
         assert select_provider() is None  # placeholder is not a key
-        monkeypatch.setenv('GEMINI_API_KEY', 'real-looking-key')
-        assert select_provider().name == 'gemini'
+        monkeypatch.setenv('GUARDML_LLM_PROVIDER', 'ollama')
+        assert select_provider().name == 'ollama'
         monkeypatch.setenv('GUARDML_LLM_PROVIDER', 'demo')
         assert select_provider() is None
 

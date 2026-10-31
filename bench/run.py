@@ -99,7 +99,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if live:
         inner = select_provider()
         if inner is None:
-            print('Live mode needs GEMINI_API_KEY or ANTHROPIC_API_KEY (or GUARDML_LLM_PROVIDER).')
+            print('Live mode needs ANTHROPIC_API_KEY or GUARDML_LLM_PROVIDER=ollama.')
             return 2
 
     configs: List[Config] = []

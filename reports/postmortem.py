@@ -70,11 +70,11 @@ IMPORTANT: Do not include ANY information not present in the Audit Log or Diagno
 class PostMortemGenerator:
     def __init__(self):
         self.audit = AuditLog()
-        # Same provider the agent uses (Ollama, Gemini or Anthropic, chosen via GUARDML_LLM_PROVIDER).
+        # Same provider the agent uses (Ollama or Anthropic, chosen via GUARDML_LLM_PROVIDER).
         self.provider = select_provider()
         if self.provider is None:
             raise ValueError('No LLM provider configured: set GUARDML_LLM_PROVIDER=ollama, '
-                             'or GEMINI_API_KEY / ANTHROPIC_API_KEY')
+                             'or ANTHROPIC_API_KEY')
 
     def generate(
         self,

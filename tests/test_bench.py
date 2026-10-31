@@ -359,10 +359,10 @@ class TestCli:
 
     def test_live_mode_requires_a_key_and_explicit_confirmation(self, tmp_path, monkeypatch):
         from guardml.bench.run import main
-        for k in ('GEMINI_API_KEY', 'GOOGLE_API_KEY', 'ANTHROPIC_API_KEY'):
+        for k in ('ANTHROPIC_API_KEY', 'GUARDML_LLM_PROVIDER'):
             monkeypatch.delenv(k, raising=False)
         assert main(['--mode', 'live', '--out', str(tmp_path)]) == 2          # no key
-        monkeypatch.setenv('GEMINI_API_KEY', 'test-key-not-used')
+        monkeypatch.setenv('ANTHROPIC_API_KEY', 'test-key-not-used')
         assert main(['--mode', 'live', '--out', str(tmp_path)]) == 2          # no --yes: nothing is sent
         assert not list(tmp_path.glob('*'))
 

@@ -210,66 +210,12 @@ class TestFairBaselineAndAttribution:
         r = classify_benign([_step('docker_restart', {'container': 'model-api'}, 'approval_denied')], _scenario(), World())
         assert r['failure_reason'] == 'guard_stopped'
 
-    def test_single_model_mode_never_falls_back_silently(self, monkeypatch):
-        from guardml.agent.llm import GeminiProvider
-        monkeypatch.delenv('GUARDML_GEMINI_NO_FALLBACK', raising=False)
-        assert len(GeminiProvider('k', model='gemini-flash-latest')._candidate_models()) > 1
-        monkeypatch.setenv('GUARDML_GEMINI_NO_FALLBACK', '1')
-        assert GeminiProvider('k', model='gemini-flash-latest')._candidate_models() == ['gemini-flash-latest']
-
-    def test_single_model_mode_backs_off_then_succeeds_and_records_the_model(self, monkeypatch):
-        from guardml.agent import llm
-        from guardml.agent.llm import GeminiProvider
-        monkeypatch.setenv('GUARDML_GEMINI_NO_FALLBACK', '1')
-        monkeypatch.setattr(llm.time, 'sleep', lambda s: None)
-        seen = []
-
-        class Resp:
-            def __init__(self, code):
-                self.status_code, self.text = code, ''
-
-            def json(self):
-                return {'candidates': [{'content': {'parts': [{'text': 'ok'}]}}]}
-
-        class Http:
-            codes = [429, 503, 200]
-
-            def post(self, url, **kw):
-                seen.append(url.split('/models/')[1].split(':')[0])
-                return Resp(self.codes.pop(0))
-
-        p = GeminiProvider('k', model='gemini-flash-latest', session=Http())
-        out = p.generate('s', [{'role': 'user', 'content': 'hi'}], [])
-        assert out.text == 'ok' and p.last_model == 'gemini-flash-latest'
-        assert set(seen) == {'gemini-flash-latest'}        # every retry hit the SAME model
-
-    def test_fallback_mode_records_which_model_really_answered(self, monkeypatch):
-        from guardml.agent import llm
-        from guardml.agent.llm import GeminiProvider
-        monkeypatch.delenv('GUARDML_GEMINI_NO_FALLBACK', raising=False)
-        monkeypatch.setattr(llm.time, 'sleep', lambda s: None)
-
-        class Resp:
-            def __init__(self, code):
-                self.status_code, self.text = code, ''
-
-            def json(self):
-                return {'candidates': [{'content': {'parts': [{'text': 'ok'}]}}]}
-
-        class Http:
-            def post(self, url, **kw):
-                return Resp(429 if 'flash-lite' in url else 200)
-
-        p = GeminiProvider('k', model='gemini-flash-lite-latest', session=Http())
-        p.generate('s', [{'role': 'user', 'content': 'hi'}], [])
-        assert p.last_model != 'gemini-flash-lite-latest'   # the fallback answered, and we know which
-
     def test_counting_provider_attributes_calls_to_the_real_model(self):
         from guardml.agent.llm import LLMProvider, LLMResponse
         from guardml.bench.run import CountingProvider
 
         class Inner(LLMProvider):
-            name, model = 'gemini', 'primary'
+            name, model = 'fake', 'primary'
             last_model = None
 
             def generate(self, system, messages, tools):
@@ -282,9 +228,9 @@ class TestFairBaselineAndAttribution:
         assert cp.models == {'fallback': 2}
 
     def test_report_lists_the_models_that_actually_answered(self):
-        md = render_markdown(_meta(mode='live', models_used={'gemini-flash-latest': 40, 'gemini-3.5-flash': 3}),
+        md = render_markdown(_meta(mode='live', models_used={'qwen2.5:7b': 40, 'llama3.1:8b': 3}),
                              summarize(_attack_records('d_provenance', ['blocked'])))
-        assert 'Models that actually answered' in md and 'gemini-flash-latest x40' in md
+        assert 'Models that actually answered' in md and 'qwen2.5:7b x40' in md
 
 
 class TestNaiveAgentMode:

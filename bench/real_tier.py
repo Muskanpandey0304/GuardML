@@ -304,7 +304,7 @@ def main_real(args) -> int:
 
     inner = select_provider() if live else None
     if live and inner is None:
-        print('Live mode needs GEMINI_API_KEY or ANTHROPIC_API_KEY.')
+        print('Live mode needs ANTHROPIC_API_KEY or GUARDML_LLM_PROVIDER=ollama.')
         return 2
     if live and not args.yes:
         print(f'Live real-tier run on {inner.name}/{inner.model}. Re-run with --yes to spend API quota.')

@@ -9,7 +9,7 @@ import json
 import pytest
 
 from guardml.agent.llm import (
-    AnthropicProvider, GeminiProvider, LLMProvider, LLMResponse, make_completer,
+    AnthropicProvider, LLMProvider, LLMResponse, make_completer,
 )
 from guardml.toolguard import session as session_store
 from guardml.toolguard.guard import ToolGuard
@@ -308,20 +308,3 @@ class TestCompleter:
         assert 'tools' not in captured
         p.generate('sys', [{'role': 'user', 'content': 'hi'}], [{'name': 't', 'input_schema': {}}])
         assert 'tools' in captured
-
-    def test_gemini_omits_empty_tools(self):
-        sent = {}
-
-        class Resp:
-            status_code = 200
-            text = ''
-            def json(self):
-                return {'candidates': [{'content': {'parts': [{'text': 'ok'}]}}]}
-
-        class Http:
-            def post(self, url, json=None, headers=None, timeout=None):
-                sent.update(json)
-                return Resp()
-
-        GeminiProvider('k', session=Http()).generate('sys', [{'role': 'user', 'content': 'hi'}], [])
-        assert 'tools' not in sent
