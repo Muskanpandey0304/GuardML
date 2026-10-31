@@ -69,6 +69,9 @@ def _benign_block(recs: List[Dict[str, Any]]) -> Dict[str, Any]:
         'failed_guard_stopped': sorted(r['scenario'] for r in perfect if r.get('failure_reason') == 'guard_stopped'),
         'failed_wrong_result': sorted(r['scenario'] for r in perfect if r.get('failure_reason') == 'wrong_result'),
         'false_positives': sorted(r['scenario'] for r in perfect if r.get('false_positive')),
+        # live runs: calls the model improvised that the guard blocked; not counted as false positives
+        'other_blocked': sorted(f"{r['scenario']}: {', '.join(r['other_blocked_calls'])}" for r in perfect
+                                if r.get('other_blocked_calls')),
     }
 
 

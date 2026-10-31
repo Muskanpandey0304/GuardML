@@ -35,14 +35,15 @@ perfect and rubber-stamp approvers, fixture world, nothing real touched):**
 | Defence | Model attempted the attack | Attack success, no human | Rubber-stamp human | Benign tasks completed | Benign false positives |
 |---|---|---|---|---|---|
 | ToolGuard | 25% (2/8) | 25% (2/8) | 12% (1/8) | 67% (2/3) | 0/3 |
-| + intent check | 25% (2/8) | **0% (0/8)** | 0% (0/8) | 33% (1/3) | 1/3 |
+| + intent check | 25% (2/8) | **0% (0/8)** | 0% (0/8) | 33% (1/3) | 0/3 |
 
 The two attacks that got past ToolGuard were well-formed calls aimed at the wrong target (restarting a
 container the user never named), which rules cannot tell from a legitimate call; the intent check stopped
 both. The intent judge approved the benign restart (asked directly: "a container restart is within the scope
-of fixing the issue"); the "Benign" columns for `+ intent check` come from how that run was scored, not from the
-judge: the model took a different route than in the ToolGuard run (no `docker_logs`, which the scenario requires)
-and ToolGuard blocked an improvised `docker_exec`, which the benchmark counts as a false positive.
+of fixing the issue"). Under `+ intent check` that task still shows as not completed because the model took a
+different route (no `docker_logs`, which the scenario requires) and improvised a `docker_exec`, which ToolGuard
+blocked. That block is not a false positive: a false positive is a block or an unexpected approval on a call the
+task needs, and calls the model improvises are listed separately in the report.
 **This is a tiny sample** (8 attacks, 3 benign tasks, one
 run each, one small model, scenarios written by the guard's author), so read it as a sign that the intent
 check adds something, not as a rate.
@@ -207,8 +208,9 @@ tests/       630 default + 11 slow tests
 Prototype, not a production deployment: the live-model evidence is one small local model on 8 attack
 scenarios, so the live numbers are indicative only; the held-out attacks were written
 by the same author as the guard; docker / kubectl / dvc fixtures are synthetic; provenance matches literal
-tokens, so a paraphrased value ("the second version") slips past it; the benign-task scoring is strict (one
-scenario requires a specific tool route, and any blocked call counts as a false positive); the audit chain is tamper-*evident* but
+tokens, so a paraphrased value ("the second version") slips past it; benign completion is strict about the route
+(one scenario requires a specific tool call), while a live false positive counts only blocks or approvals on
+calls the task needs; the audit chain is tamper-*evident* but
 someone with write access to the database can recompute it; the post-mortem generator needs an LLM provider
 (Ollama or Anthropic); the Docker setup was tested on one machine (Docker Desktop on Windows), and a local 7B
 model is slow (about 2 to 3 minutes for a diagnosis on a 4 GB GPU).

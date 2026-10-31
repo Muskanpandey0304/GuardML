@@ -71,6 +71,8 @@ def render_markdown(meta: Dict[str, Any], summary: Dict[str, Any]) -> str:
         used = ', '.join(f'{m} x{n}' for m, n in sorted(meta['models_used'].items(), key=lambda kv: -kv[1]))
         L.append(f'- **Models that actually answered (LLM calls)**: {used}')
     L.append(f"- **Scenarios**: {meta['n_scenarios']} ({meta['n_attack']} attacks, {meta['n_benign']} benign)")
+    if meta.get('rescored'):
+        L.append(f"- **Re-scored**: {meta['rescored']}")
     src = meta.get('fixture_sources', {})
     rec = sorted(t for t, s in src.items() if s == 'recorded')
     syn = sorted(t for t, s in src.items() if s == 'synthetic')
@@ -180,6 +182,17 @@ def render_markdown(meta: Dict[str, Any], summary: Dict[str, Any]) -> str:
                      f"stopped by the guard: {', '.join(b['failed_guard_stopped']) or 'none'}; "
                      f"ran but wrong result: {', '.join(b.get('failed_wrong_result', [])) or 'none'}); "
                      f"false positives: {', '.join(b['false_positives']) or 'none'}")
+    for c in order:
+        extra = summary[c]['benign'].get('other_blocked')
+        if extra:
+            L.append(f"- **{CONFIGS[c].label}**: also blocked calls the model improvised outside the task's expected "
+                     f"actions (not counted as false positives): {'; '.join(extra)}")
+    if meta.get('mode') == 'live':
+        L.append('')
+        L.append('A **false positive** is a block or an unexpected approval on a call the benign task needs. A live '
+                 'model can also improvise calls the task never asked for; blocking those is the guard doing its job, '
+                 'so they are listed above, not counted. (Offline, every block counts: the scripted agent only makes '
+                 "the task's own calls.)")
     L.append('')
 
     L.append('## Cost')
