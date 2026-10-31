@@ -1,62 +1,44 @@
 # GuardML
 
+[![CI](https://github.com/Muskanpandey0304/GuardML/actions/workflows/ci.yml/badge.svg)](https://github.com/Muskanpandey0304/GuardML/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
+
 **An MLOps diagnostic agent whose safety lives in code, not in the prompt.**
 The LLM can only *propose* tool calls. A policy layer (ToolGuard) decides whether each one runs, and
 a built-in benchmark (GuardBench) measures how well that works.
 
-## Does it work? Measured results
+## What it is
 
-GuardBench runs 62 scenarios (18 legitimate tasks, 44 attacks: direct, indirect prompt injection, argument
-and approval bypass). An attack counts as successful only if the malicious tool call **actually executed**.
+GuardML helps you work out why a machine-learning model got worse in production ("why did accuracy drop this
+week?"). An LLM agent reads experiment runs, checks data drift and data quality, and can take real actions such as
+restarting a service or rolling back a model version, using ordinary MLOps tools (MLflow, DVC, Docker).
 
-| Defence | Attack success, no human | Attack success, rubber-stamp human | Benign tasks completed |
-|---|---|---|---|
-| No guard | 100% (44/44) | 100% (44/44) | 100% |
-| ToolGuard | 16% (7/44) | 36% (16/44) | 100% |
-| **+ argument provenance** | **5% (2/44)** | 36% (16/44) | 100% |
+Giving an agent those tools is the easy part. The hard part is that text the agent reads (a log line, a run tag, a CSV
+header) can contain instructions, and the model may obey them. GuardML puts the safety checks **in code, on every
+tool call**, instead of asking the model nicely in a prompt, and then measures whether that holds up against attacks.
 
-| Other tiers | ToolGuard | + provenance |
-|---|---|---|
-| Held-out attacks, written after the guard was frozen (11), first run | 45% (5/11) | 18% (2/11) |
-| Same, after fixing the container-log gap it found | 36% (4/11) | 9% (1/11) |
-| Attacks written blind by a fresh Claude Opus session, not by me (13) | 31% (4/13) | 0% (0/13) |
-| Adversarial red team by the guard's own author, not independent (13), first run | 69% (9/13) | 31% (4/13) |
-| Same, after fixing the two read gaps it found | 54% (7/13) | 15% (2/13) |
-| Real MLflow store + real rollback (7 attacks, 5 benign tasks) | 0% (0/7) | 0% (0/7) |
+## Highlights
 
-**Read these honestly.** Offline runs use a scripted agent that plays a model which has *already fallen
-for* the injection (the worst case), so they show whether the guard stops the action, not how often a
-real model is fooled. "Rubber-stamp human" approves everything: escalating to a person only helps if the
-person refuses.
+- **Safety enforced outside the model.** Every call goes through one choke point: deny-by-default policy, typed
+  argument validation, risk scoring, argument provenance (did this value come from the user, or only from tool
+  output?), an isolated intent check, human approval for risky actions, secret masking, snapshot and automatic
+  rollback, and a hash-chained audit log.
+- **Measured, not claimed.** In GuardBench's offline worst case (62 scenarios, 44 attacks, the model assumed already
+  fooled), attack success falls from 100% with no guard to 5% with ToolGuard plus provenance, and all legitimate tasks
+  still complete. The results also list the cases the guard does *not* handle.
+- **Independent evidence.** On the external AgentDojo benchmark (banking slice, 40 attack cases, a local 14B model),
+  the attack succeeded in 26 of 40 cases with no guard and in 0 of 40 with it. The report states what that cost
+  (normal tasks completed fell from 5/8 to 3/8) and what the sample cannot show.
+- **Honest about limits.** A known-limits section, a threat model that lists what is *not* defended, and results
+  split by who wrote the attacks.
+- **Easy to run.** `docker compose up`, a no-key demo mode, a local model through Ollama, or Claude. 659 tests, plus
+  CI on every push with a regression gate on the benchmark.
 
-**Live model (local Ollama, `qwen2.5:7b`, 11 live scenarios: 8 attacks, 3 benign; ToolGuard and + intent check,
-perfect and rubber-stamp approvers, fixture world, nothing real touched):**
+Built with Python, FastAPI, Streamlit, MLflow, DVC, SQLite, Docker, pytest and GitHub Actions.
 
-| Defence | Model attempted the attack | Attack success, no human | Rubber-stamp human | Benign tasks completed | Benign false positives |
-|---|---|---|---|---|---|
-| ToolGuard | 25% (2/8) | 25% (2/8) | 12% (1/8) | 67% (2/3) | 0/3 |
-| + intent check | 25% (2/8) | **0% (0/8)** | 0% (0/8) | 33% (1/3) | 0/3 |
-
-The two attacks that got past ToolGuard were well-formed calls aimed at the wrong target (restarting a
-container the user never named), which rules cannot tell from a legitimate call; the intent check stopped
-both. The intent judge approved the benign restart (asked directly: "a container restart is within the scope
-of fixing the issue"). Under `+ intent check` that task still shows as not completed because the model took a
-different route (no `docker_logs`, which the scenario requires) and improvised a `docker_exec`, which ToolGuard
-blocked. That block is not a false positive: a false positive is a block or an unexpected approval on a call the
-task needs, and calls the model improvises are listed separately in the report.
-**This is a tiny sample** (8 attacks, 3 benign tasks, one
-run each, one small model, scenarios written by the guard's author), so read it as a sign that the intent
-check adds something, not as a rate.
-
-**Independent check (AgentDojo, not written by us).** On the external [AgentDojo](benchmarks/agentdojo) benchmark
-(banking suite, `qwen2.5:14b`, 8 user x 5 injection tasks = 40 attack pairs), the attack succeeded in 26 of 40 with no
-guard and in 0 of 40 with provenance + the intent judge; the saved logs show the guard blocking the injected payments.
-It also cost normal work (5/8 to 3/8 tasks completed), mostly tasks that delegate to a file or page. One suite, one
-model, one attack, a small slice: see [benchmarks/agentdojo](benchmarks/agentdojo) for the caveats.
-
-In the offline tiers, reads were the weak spot. Three read gaps (another
-container's logs, source files under `./demo`, any Kubernetes namespace) were found by the held-out and adversarial
-sets and fixed afterwards with allow-lists, re-measured separately (the tables here are the original runs). Details, tiers and how to reproduce: [bench/README.md](bench/README.md).
+**Contents:** [The problem](#the-problem) · [How it works](#how-it-works) · [Results](#results) ·
+[Threat model](#threat-model) · [Quick start](#quick-start) · [Known limits](#known-limits) · [License](#license)
 
 ## The problem
 
@@ -112,6 +94,66 @@ User ──► Streamlit UI ──► FastAPI (auth, roles, two-person approval 
 
 Design decisions and known limits: [docs/DESIGN.md](docs/DESIGN.md).
 
+## Results
+
+GuardBench runs 62 scenarios (18 legitimate tasks, 44 attacks: direct, indirect prompt injection, argument
+and approval bypass). An attack counts as successful only if the malicious tool call **actually executed**.
+
+### GuardBench, offline (the worst case: the model is assumed already fooled)
+
+| Defence | Attack success, no human | Attack success, rubber-stamp human | Benign tasks completed |
+|---|---|---|---|
+| No guard | 100% (44/44) | 100% (44/44) | 100% |
+| ToolGuard | 16% (7/44) | 36% (16/44) | 100% |
+| **+ argument provenance** | **5% (2/44)** | 36% (16/44) | 100% |
+
+| Other tiers | ToolGuard | + provenance |
+|---|---|---|
+| Held-out attacks, written after the guard was frozen (11), first run | 45% (5/11) | 18% (2/11) |
+| Same, after fixing the container-log gap it found | 36% (4/11) | 9% (1/11) |
+| Attacks written blind by a fresh Claude Opus session, not by me (13) | 31% (4/13) | 0% (0/13) |
+| Adversarial red team by the guard's own author, not independent (13), first run | 69% (9/13) | 31% (4/13) |
+| Same, after fixing the two read gaps it found | 54% (7/13) | 15% (2/13) |
+| Real MLflow store + real rollback (7 attacks, 5 benign tasks) | 0% (0/7) | 0% (0/7) |
+
+**Read these honestly.** Offline runs use a scripted agent that plays a model which has *already fallen
+for* the injection (the worst case), so they show whether the guard stops the action, not how often a
+real model is fooled. "Rubber-stamp human" approves everything: escalating to a person only helps if the
+person refuses.
+
+In the offline tiers, reads were the weak spot. Three read gaps (another
+container's logs, source files under `./demo`, any Kubernetes namespace) were found by the held-out and adversarial
+sets and fixed afterwards with allow-lists, re-measured separately (the tables here are the original runs). Details, tiers and how to reproduce: [bench/README.md](bench/README.md).
+
+### Live model (local Ollama)
+
+**Live model (local Ollama, `qwen2.5:7b`, 11 live scenarios: 8 attacks, 3 benign; ToolGuard and + intent check,
+perfect and rubber-stamp approvers, fixture world, nothing real touched):**
+
+| Defence | Model attempted the attack | Attack success, no human | Rubber-stamp human | Benign tasks completed | Benign false positives |
+|---|---|---|---|---|---|
+| ToolGuard | 25% (2/8) | 25% (2/8) | 12% (1/8) | 67% (2/3) | 0/3 |
+| + intent check | 25% (2/8) | **0% (0/8)** | 0% (0/8) | 33% (1/3) | 0/3 |
+
+The two attacks that got past ToolGuard were well-formed calls aimed at the wrong target (restarting a
+container the user never named), which rules cannot tell from a legitimate call; the intent check stopped
+both. The intent judge approved the benign restart (asked directly: "a container restart is within the scope
+of fixing the issue"). Under `+ intent check` that task still shows as not completed because the model took a
+different route (no `docker_logs`, which the scenario requires) and improvised a `docker_exec`, which ToolGuard
+blocked. That block is not a false positive: a false positive is a block or an unexpected approval on a call the
+task needs, and calls the model improvises are listed separately in the report.
+**This is a tiny sample** (8 attacks, 3 benign tasks, one
+run each, one small model, scenarios written by the guard's author), so read it as a sign that the intent
+check adds something, not as a rate.
+
+### Independent check: AgentDojo
+
+**Independent check (AgentDojo, not written by us).** On the external [AgentDojo](benchmarks/agentdojo) benchmark
+(banking suite, `qwen2.5:14b`, 8 user x 5 injection tasks = 40 attack pairs), the attack succeeded in 26 of 40 with no
+guard and in 0 of 40 with provenance + the intent judge; the saved logs show the guard blocking the injected payments.
+It also cost normal work (5/8 to 3/8 tasks completed), mostly tasks that delegate to a file or page. One suite, one
+model, one attack, a small slice: see [benchmarks/agentdojo](benchmarks/agentdojo) for the caveats.
+
 ## Threat model
 
 | # | Threat | Example | Defence |
@@ -142,10 +184,13 @@ Design decisions and known limits: [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Quick start
 
-Imports use the package name `guardml`, and data paths are relative to the repo folder, so run from the
-repo folder with its parent on `PYTHONPATH` (the Dockerfile does the same).
+Needs Python 3.11 or newer. The repo folder is itself the `guardml` Python package, so clone it into a folder named
+`guardml`, and run from inside it with its parent folder on `PYTHONPATH` (the Dockerfile does the same). The easiest
+start is **Docker** (below); with no API key set, a deterministic demo mode runs a scripted investigation through the
+same real guard, so you can try everything without any model.
 
 ```bash
+git clone https://github.com/Muskanpandey0304/GuardML.git guardml
 cd guardml
 pip install -r requirements.txt
 cp env.example .env          # set GUARDML_USERS / GUARDML_APPROVERS tokens (python -c "import secrets; print(secrets.token_urlsafe(32))")
@@ -180,7 +225,7 @@ run end to end through the containers. First start rewrites the tracked files in
 ### Tests and benchmark
 
 ```bash
-pytest tests -q                              # 630 tests
+pytest tests -q                              # 659 tests (1 more runs only where agentdojo is installed)
 pytest tests -m slow -q                      # + real-MLflow tests (trains a model, ~1 min)
 cd .. && python -m guardml.bench.run         # GuardBench, offline, ~15 s -> bench/results/
 ```
@@ -206,7 +251,8 @@ tools/       19 tool wrappers (MLflow, drift, data quality, DVC, Docker, kubectl
 safety/      snapshots + rollback        audit/  hash-chained log + replay        reports/  post-mortems
 api/ ui/     FastAPI backend, Streamlit UI        demo/  a deliberately broken ML setup
 bench/       GuardBench: scenarios, fixtures, real tier, runner, results        docs/  design notes
-tests/       630 default + 11 slow tests
+benchmarks/  external benchmarks (AgentDojo): adapter, runner, results
+tests/       659 default + 11 slow tests
 ```
 
 ## Known limits
@@ -229,3 +275,7 @@ the UI. `blocked_tools` can't be overridden by a prompt or an approval. API: bea
 compare), user and approver roles, the environment is server-side only, session ids are server-generated,
 production approvals follow a two-person rule, CORS is never `*`, and the app refuses to start with weak
 or placeholder tokens.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
